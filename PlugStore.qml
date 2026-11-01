@@ -203,7 +203,12 @@ Singleton {
     })
   }
 
-  function begin() { root._pending++; root.polling = true }
+  property double _pollStarted: 0
+  function begin() {
+    if (root._pending === 0) root._pollStarted = Date.now()
+    root._pending++
+    root.polling = true
+  }
   function finish() {
     root._pending = Math.max(0, root._pending - 1)
     if (root._pending === 0) { root.polling = false; root.now = Date.now(); saveState() }
@@ -398,6 +403,18 @@ Singleton {
     onExited: if (root._saveQueued !== "") { stdinEnabled = true; running = true }
   }
 
-  // Keeps "updated 3 h ago" honest while the bar sits there.
-  Timer { interval: 60000; running: true; repeat: true; onTriggered: root.now = Date.now() }
+  // Keeps "updated 3 h ago" honest while the bar sits there, and unsticks a
+  // check whose request never came back (XHR has no reliable timeout here).
+  Timer {
+    interval: 60000; running: true; repeat: true
+    onTriggered: {
+      root.now = Date.now()
+      if (root.polling && root.now - root._pollStarted > 120000) {
+        root._pending = 0
+        root.polling = false
+        root.pollError = "GitHub didn't answer. Trying again next time."
+        root.saveState()
+      }
+    }
+  }
 }
