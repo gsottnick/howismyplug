@@ -3,7 +3,7 @@
 Plan: `~/.claude/plans/can-we-make-an-melodic-wind.md`. Work on branch `first-build`, merge by PR.
 
 - [x] Repo created (gsottnick/howismyplug), initial commit on main
-- [ ] Repo public + "Protect main" ruleset copied from omatuple (needs Gavin: auto mode blocked it)
+- [x] Repo public + "Protect main" ruleset (same as omatuple: PRs only, Node tests + Panel tests required)
 - [ ] Step 0: GitHub App "HowIsMyPlug" (Administration read, Metadata read, device flow on, user tokens don't expire) — needs Gavin's OK
 - [x] Step 1 spike: Quickshell XHR does HTTPS + custom headers (status 200 from api.omarchyplugins.com)
 - [ ] Step 1 rest: device-flow token reads /traffic/clones; non-expiring token works without a secret
