@@ -97,6 +97,23 @@ function parseMarket(raw, ids) {
   return out
 }
 
+// Base64 (as GitHub's contents API sends it) -> UTF-8 text, or "" if malformed.
+function decodeBase64(b64) {
+  var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+  var s = text(b64).replace(/\s/g, "")
+  if (!/^[A-Za-z0-9+\/]*={0,2}$/.test(s) || s.length % 4 !== 0) return ""
+  s = s.replace(/=+$/, "")
+  var bytes = [], buf = 0, bits = 0
+  for (var i = 0; i < s.length; i++) {
+    buf = (buf << 6) | chars.indexOf(s.charAt(i))
+    bits += 6
+    if (bits >= 8) { bits -= 8; bytes.push((buf >> bits) & 0xff) }
+  }
+  var pct = ""
+  for (var j = 0; j < bytes.length; j++) pct += "%" + (bytes[j] < 16 ? "0" : "") + bytes[j].toString(16)
+  try { return decodeURIComponent(pct) } catch (e) { return "" }
+}
+
 // The decoded text of a repo's manifest.json -> its plugin id, or "".
 function pluginIdFromManifest(manifestText) {
   var m = parseJson(manifestText)
@@ -308,11 +325,11 @@ function newRepo(repo, now) {
 
 function cleanState(raw) {
   var p = typeof raw === "string" ? parseJson(raw) : raw
-  var out = { schema: 1, lastPoll: 0, lastMarket: 0, period: "all", repos: [], seen: {} }
+  var out = { schema: 1, lastPoll: 0, lastMarket: 0, authMethod: "app", repos: [], seen: {} }
   if (!isObject(p)) return out
   out.lastPoll = safeCount(p.lastPoll)
   out.lastMarket = safeCount(p.lastMarket)
-  if (PERIODS.indexOf(p.period) >= 0) out.period = p.period
+  if (p.authMethod === "token") out.authMethod = "token"
   if (isObject(p.seen)) for (var m in p.seen) if (METRICS.indexOf(m) >= 0) out.seen[m] = safeCount(p.seen[m])
   var list = Array.isArray(p.repos) ? p.repos : [], have = {}
   for (var i = 0; i < list.length && out.repos.length < 100; i++) {

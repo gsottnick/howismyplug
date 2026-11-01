@@ -41,6 +41,17 @@ test("plugin ids follow the marketplace's rule", () => {
   assert.equal(M.pluginIdFromManifest("not json"), "")
 })
 
+test("base64 from the contents API decodes, junk doesn't", () => {
+  const manifest = JSON.stringify({ id: "io.github.a.b", name: "Plüg ✓" })
+  const b64 = Buffer.from(manifest).toString("base64")
+  const wrapped = b64.replace(/(.{60})/g, "$1\n")
+  assert.equal(M.decodeBase64(wrapped), manifest)
+  assert.equal(M.decodeBase64(""), "")
+  assert.equal(M.decodeBase64("abc"), "")
+  assert.equal(M.decodeBase64("<script>"), "")
+  assert.equal(M.decodeBase64(Buffer.from([0xff, 0xfe]).toString("base64")), "", "not UTF-8")
+})
+
 test("traffic responses are sanitized", () => {
   const raw = JSON.stringify({
     count: 551, uniques: 152,
@@ -164,7 +175,7 @@ test("poll schedule and missed days", () => {
 
 test("the state file is cleaned on load", () => {
   const s = M.cleanState(JSON.stringify({
-    lastPoll: 5, period: "7d", seen: { clones: 3, evil: 1 },
+    lastPoll: 5, authMethod: "token", seen: { clones: 3, evil: 1 },
     repos: [
       { repo: "a/b", pluginId: "io.x.y", idChecked: true, access: "ok",
         clones: { days: { "2026-11-01": [3, 1], "bad": [1, 1], "2026-11-02": "x" }, last14: { count: 3, uniques: 1 }, last14Day: "2026-11-01" },
@@ -174,7 +185,7 @@ test("the state file is cleaned on load", () => {
       { repo: "c/d", pluginId: "bad id", access: "hacked" },
     ],
   }))
-  assert.equal(s.period, "7d")
+  assert.equal(s.authMethod, "token")
   assert.deepEqual(s.seen, { clones: 3 })
   assert.deepEqual(s.repos.map((r) => r.repo), ["a/b", "c/d"])
   assert.deepEqual(s.repos[0].clones, { days: { "2026-11-01": [3, 1] }, last14: { count: 3, uniques: 1 }, last14Day: "2026-11-01" })

@@ -1,0 +1,6 @@
+singleton PlugStore 1.0 PlugStore.qml
+PlugView 1.0 PlugView.qml
+DecryptText 1.0 DecryptText.qml
+Confetti 1.0 Confetti.qml
+TokenRain 1.0 TokenRain.qml
+Sparkle 1.0 Sparkle.qml
