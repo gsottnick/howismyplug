@@ -204,4 +204,7 @@ test("formatting", () => {
   assert.equal(M.countText(551, 152, "both"), "551 · 152")
   assert.equal(M.countText(551, 152, "unique"), "152")
   assert.equal(M.periodLabel("all"), "All time")
+  assert.equal(M.countWords(1406, 383, "both", "clones"), "1,406 clones (383 unique)")
+  assert.equal(M.countWords(1406, 383, "unique", "views"), "383 unique views")
+  assert.equal(M.countWords(1406, 383, "total", "clones"), "1,406 clones")
 })

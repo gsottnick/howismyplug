@@ -1,0 +1,99 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>HowIsMyPlug? preview</title>
+<!-- Laid out at 1920x1080 and captured at 2x by make-preview.py. panel.png and
+     milestone.png are the real dropdown (fake data), rendered at 2.5x. -->
+<style>
+  :root {
+    --bg: #0c0e16;
+    --text: #c8d0f0;
+    --dim: #7c84a6;
+    --accent: #7aa2f7;
+    --green: #9ece6a;
+    --line: rgba(122, 162, 247, 0.18);
+  }
+  * { margin: 0; box-sizing: border-box; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; }
+  body {
+    background:
+      radial-gradient(900px 700px at 80% 20%, rgba(122, 162, 247, 0.20), transparent 70%),
+      radial-gradient(800px 600px at 6% 96%, rgba(158, 206, 106, 0.13), transparent 70%),
+      radial-gradient(rgba(200, 208, 240, 0.07) 1px, transparent 1px) 0 0 / 28px 28px,
+      var(--bg);
+    color: var(--text);
+    font-family: "JetBrainsMono Nerd Font", "JetBrains Mono", monospace;
+    position: relative;
+  }
+
+  .bar {
+    position: absolute; inset: 0 0 auto 0; height: 44px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 28px; background: rgba(22, 24, 36, 0.92);
+    border-bottom: 1px solid var(--line); font-size: 17px; color: var(--dim);
+  }
+  .bar .ws span { margin-right: 18px; }
+  .bar .ws span.on { color: var(--text); }
+  .bar .right { display: flex; align-items: center; gap: 30px; }
+  .bar .widget { display: flex; align-items: center; gap: 10px; color: var(--text); }
+  .bar .plug { color: var(--accent); filter: drop-shadow(0 0 6px var(--accent)); }
+
+  .copy { position: absolute; left: 110px; top: 170px; width: 780px; }
+  .eyebrow { font-size: 18px; letter-spacing: 0.32em; color: var(--accent); }
+  h1 {
+    margin-top: 22px; font-size: 108px; line-height: 1; letter-spacing: -0.02em;
+    background: linear-gradient(100deg, #e4e9ff 10%, var(--accent) 60%, var(--green));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .tagline { margin-top: 26px; font-size: 30px; line-height: 1.4; color: var(--text); }
+  ul { list-style: none; padding: 0; margin-top: 44px; }
+  li { position: relative; padding-left: 38px; margin-bottom: 18px; font-size: 20px; line-height: 1.45; color: var(--dim); }
+  li b { color: var(--text); font-weight: 600; }
+  li::before {
+    content: ""; position: absolute; left: 4px; top: 11px; width: 12px; height: 12px;
+    border-radius: 3px; background: var(--accent); box-shadow: 0 0 14px var(--accent);
+  }
+  .foot { position: absolute; left: 110px; bottom: 64px; font-size: 17px; color: var(--dim); letter-spacing: 0.04em; }
+  .foot span { color: var(--accent); margin: 0 12px; }
+
+  .shot { position: absolute; width: 440px; border-radius: 4px; }
+  .shot.front {
+    right: 40px; top: 58px;
+    box-shadow: 0 40px 90px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(122, 162, 247, 0.25), 0 0 120px rgba(122, 162, 247, 0.22);
+  }
+  .shot.back {
+    width: 400px; right: 530px; top: 330px; transform: rotate(-4deg); opacity: 0.96;
+    outline: 2px solid rgba(122, 162, 247, 0.55);
+    box-shadow: 0 40px 90px rgba(0, 0, 0, 0.7), 0 0 90px rgba(158, 206, 106, 0.16);
+  }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <div class="ws"><span class="on">1</span><span>2</span><span>3</span></div>
+    <div class="right">
+      <span>10:42</span>
+      <div class="widget"><svg class="plug" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M8 2h2v5h4V2h2v5h1a1 1 0 0 1 1 1v4a6 6 0 0 1-5 5.9V22h-2v-4.1A6 6 0 0 1 6 12V8a1 1 0 0 1 1-1h1z"/></svg>1,534</div>
+    </div>
+  </div>
+
+  <div class="copy">
+    <div class="eyebrow">FOR OMARCHY PLUGIN AUTHORS</div>
+    <h1>HowIsMyPlug?</h1>
+    <p class="tagline">Every clone, view and copy of your plugins,<br>kept forever. Free, and on your machine.</p>
+    <ul>
+      <li><b>Lifetime clones and repo views:</b> GitHub forgets after 14 days, this doesn't</li>
+      <li><b>Your marketplace listing:</b> views, install copies and hearts</li>
+      <li><b>Any period:</b> 7, 14 or 30 days or all time, total or unique</li>
+      <li><b>Milestones:</b> a little celebration every 100 clones, or whatever you pick</li>
+      <li><b>Two-click setup:</b> sign in with GitHub, or paste a token</li>
+    </ul>
+  </div>
+
+  <img class="shot back" src="milestone.png" alt="">
+  <img class="shot front" src="panel.png" alt="">
+
+  <div class="foot">Read-only GitHub access<span>·</span>Sign-in kept in your keyring<span>·</span>MIT licensed</div>
+</body>
+</html>

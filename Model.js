@@ -369,6 +369,13 @@ function countText(count, uniques, mode) {
   return grouped(count)
 }
 
+// "1,406 clones", "383 unique clones", or "1,406 clones (383 unique)".
+function countWords(count, uniques, mode, noun) {
+  if (mode === "unique") return grouped(uniques) + " unique " + noun
+  if (mode === "both") return grouped(count) + " " + noun + " (" + grouped(uniques) + " unique)"
+  return grouped(count) + " " + noun
+}
+
 function periodLabel(period) {
   return { "7d": "7 days", "14d": "14 days", "30d": "30 days" }[period] || "All time"
 }

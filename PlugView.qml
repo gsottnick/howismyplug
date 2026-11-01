@@ -41,26 +41,40 @@ Item {
     return Math.round(s / 86400) + " days ago"
   }
 
-  function trafficText(series) {
+  function trafficWords(series, noun) {
     var t = Model.trafficFor(series, root.period, root.today)
-    return Model.countText(t.count, t.uniques, root.mode)
+    return Model.countWords(t.count, t.uniques, root.mode, noun)
   }
 
+  // Two lines per repo: GitHub traffic, then the marketplace listing.
   function repoLine(r) {
-    var parts = []
-    if (r.access === "denied" || r.access === "missing") parts.push("no access to traffic yet")
-    else if (!PlugStore.signedIn) parts.push("sign in for clones and views")
-    else if (r.clones) parts.push(trafficText(r.clones) + " clones", trafficText(r.views) + " views")
-    else parts.push("waiting for GitHub")
+    var github
+    if (r.access === "denied" || r.access === "missing") github = "No access to traffic yet"
+    else if (!PlugStore.signedIn) github = "Sign in for clones and views"
+    else if (r.clones) github = trafficWords(r.clones, "clones") + "  ·  " + trafficWords(r.views, "views")
+    else github = "Waiting for GitHub"
+    var listing
     if (r.market) {
       var m = Model.marketFor(r.market, root.period, root.today)
-      parts.push(Model.grouped(m.views) + " listing views", Model.grouped(m.copies) + " copies", Model.grouped(m.hearts) + " ♥")
+      listing = "Listing  " + Model.grouped(m.views) + " views  ·  " + Model.grouped(m.copies) + " copies  ·  " + Model.grouped(m.hearts) + " \u2665"
     } else if (r.idChecked && !r.pluginId) {
-      parts.push("not a plugin repo")
+      listing = "Not a plugin repo"
     } else if (r.pluginId) {
-      parts.push("not on the marketplace yet")
+      listing = "Not on the marketplace yet"
+    } else {
+      listing = "Looking for a plugin listing…"
     }
-    return parts.join("  ·  ")
+    return github + "\n" + listing
+  }
+
+  // Tile numbers: the big one follows the count mode, "N unique" goes under it.
+  function big(t) {
+    if (!PlugStore.signedIn && t.count === 0) return "—"
+    return Model.grouped(root.mode === "unique" ? t.uniques : t.count)
+  }
+  function sub(t) {
+    if (!PlugStore.signedIn && t.count === 0) return "sign in to track"
+    return root.mode === "both" ? Model.grouped(t.uniques) + " unique" : (root.mode === "unique" ? "unique" : "")
   }
 
   function addRepo() {
@@ -198,10 +212,10 @@ Item {
           Repeater {
             id: tiles
             model: [
-              { label: "CLONES", value: Model.countText(root.totals.clones.count, root.totals.clones.uniques, root.mode) },
-              { label: "REPO VIEWS", value: Model.countText(root.totals.views.count, root.totals.views.uniques, root.mode) },
-              { label: "LISTING VIEWS", value: Model.grouped(root.totals.market.views) },
-              { label: "COPIES · HEARTS", value: Model.grouped(root.totals.market.copies) + " · " + Model.grouped(root.totals.market.hearts) }
+              { label: "CLONES", value: root.big(root.totals.clones), sub: root.sub(root.totals.clones) },
+              { label: "REPO VIEWS", value: root.big(root.totals.views), sub: root.sub(root.totals.views) },
+              { label: "LISTING VIEWS", value: Model.grouped(root.totals.market.views), sub: "" },
+              { label: "COPIES · HEARTS", value: Model.grouped(root.totals.market.copies) + " · " + Model.grouped(root.totals.market.hearts), sub: "" }
             ]
             delegate: Column {
               required property var modelData
@@ -222,17 +236,23 @@ Item {
                 settledColor: root.fg; scrambleColor: root.accent
                 font.family: root.ff; font.pixelSize: Style.font.title + 4; font.bold: true
               }
+              Text {
+                visible: modelData.sub !== ""
+                text: modelData.sub
+                color: root.dim
+                font.family: root.ff; font.pixelSize: Style.font.caption
+              }
             }
           }
         }
 
         Text {
-          visible: root.hasRepos && root.mode !== "total"
+          visible: root.hasRepos && root.mode !== "total" && PlugStore.signedIn
           width: parent.width
           wrapMode: Text.WordWrap
           text: root.approxUnique
-            ? "Clones and views read total · unique. Unique adds up each day's unique visitors (all GitHub keeps). Listing numbers come from the marketplace."
-            : "Clones and views read total · unique (GitHub's exact 14-day count). Listing numbers come from the marketplace."
+            ? "Unique adds up each day's unique visitors; GitHub doesn't keep more than that."
+            : "Unique is GitHub's exact 14-day count."
           color: root.dim
           font.family: root.ff; font.pixelSize: Style.font.caption
         }
