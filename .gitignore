@@ -1,0 +1,4 @@
+.venv-harness/
+__pycache__/
+*.pyc
+tests/harness/.qsroot/
