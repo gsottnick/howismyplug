@@ -231,12 +231,21 @@ class PanelTest(unittest.TestCase):
         self.assertIn("https://github.com/login/device", during["opened"])
         copied = [p["stdin"] for p in during["piped"] if p["command"] == ["wl-copy"]]
         self.assertIn("ABCD-1234", copied)
+        self.assertTrue(during["view"]["codeCopied"] is False, "only the button shows 'Copied'")
         self.assertTrue(s["signedIn"])
         self.assertEqual(s["authMethod"], "app")
         self.assertFalse(s["signingIn"])
         self.assertEqual(h.keyring_secret(), fake_github.TOKEN)
         self.assertEqual(s["state"]["repos"][0]["access"], "ok")
         self.assert_token_stays_private(h, fake_github.TOKEN)
+
+    def test_the_copy_button_copies_the_sign_in_code(self):
+        self.fake.pending_polls = 99
+        h = self.harness()
+        s = h.run(["sign-in", "wait:300", "click:copyCodeButton"])
+        copied = [p["stdin"] for p in s["piped"] if p["command"] == ["wl-copy"]]
+        self.assertEqual(copied, ["ABCD-1234", "ABCD-1234"], "copied on sign-in and again on click")
+        self.assertTrue(s["view"]["codeCopied"])
 
     def test_a_saved_sign_in_is_used_on_start_and_sign_out_forgets_it(self):
         h = self.harness()

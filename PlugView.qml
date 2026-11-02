@@ -31,6 +31,8 @@ Item {
   property string repoError: ""
   property string tokenError: ""
   property bool tokenMode: false
+  property bool codeCopied: false
+  Timer { id: copiedTimer; interval: 2000; onTriggered: root.codeCopied = false }
 
   function ago(ms) {
     if (!(ms > 0)) return "never"
@@ -400,18 +402,39 @@ Item {
           width: parent.width
           spacing: Style.space(6)
           Text {
-            text: "Enter this code on the GitHub page that just opened (it's copied):"
+            text: "Paste this code on the GitHub page that just opened, then click Authorize:"
             width: parent.width
             wrapMode: Text.WordWrap
             color: root.dim
             font.family: root.ff; font.pixelSize: Style.font.bodySmall
           }
-          Text {
-            objectName: "userCode"
-            text: PlugStore.userCode
-            textFormat: Text.PlainText
-            color: root.accent
-            font.family: root.ff; font.pixelSize: Style.font.title + 10; font.bold: true; font.letterSpacing: 4
+          Row {
+            spacing: Style.space(10)
+            Text {
+              id: codeText
+              objectName: "userCode"
+              anchors.verticalCenter: parent.verticalCenter
+              text: PlugStore.userCode
+              textFormat: Text.PlainText
+              color: root.accent
+              font.family: root.ff; font.pixelSize: Style.font.title + 10; font.bold: true; font.letterSpacing: 4
+            }
+            PanelActionButton {
+              objectName: "copyCodeButton"
+              anchors.verticalCenter: parent.verticalCenter
+              iconText: "\u{f018f}"
+              tooltipText: "Copy the code"
+              foreground: root.fg
+              fontFamily: root.ff
+              onClicked: { PlugStore.copy(PlugStore.userCode); root.codeCopied = true; copiedTimer.restart() }
+            }
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              visible: root.codeCopied
+              text: "Copied"
+              color: root.dim
+              font.family: root.ff; font.pixelSize: Style.font.bodySmall
+            }
           }
           Row {
             spacing: Style.space(6)
