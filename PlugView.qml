@@ -957,7 +957,7 @@ Item {
       Row {
         spacing: Style.space(10)
         Text {
-          objectName: "userCode"
+          objectName: signIn.objectName + "-userCode"
           anchors.verticalCenter: parent.verticalCenter
           text: PlugStore.userCode
           textFormat: Text.PlainText
