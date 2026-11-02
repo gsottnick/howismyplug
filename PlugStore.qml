@@ -69,7 +69,7 @@ Singleton {
   // -> "" on success, or why not.
   function addRepo(input) {
     var name = Model.normalizeRepo(input)
-    if (!name) return "Use owner/repo, like gsottnick/omatuple"
+    if (!name) return "Use owner/repo or a GitHub link, like yourname/my-omarchy-plugin"
     for (var i = 0; i < state.repos.length; i++)
       if (state.repos[i].repo.toLowerCase() === name.toLowerCase()) return "Already tracked"
     if (state.repos.length >= 100) return "That's the limit of 100 repos"

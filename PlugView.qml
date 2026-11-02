@@ -338,7 +338,7 @@ Item {
             objectName: "repoField"
             width: parent.width - trackButton.width - Style.space(6)
             foreground: root.fg
-            placeholderText: "owner/repo"
+            placeholderText: "e.g. yourname/my-omarchy-plugin"
             onAccepted: root.addRepo()
           }
           Button {
