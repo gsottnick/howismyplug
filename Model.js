@@ -11,7 +11,6 @@ var GITHUB_WINDOW_DAYS = 14
 // Bi-weekly is 13 days: GitHub's 14-day window includes today, so a full
 // 14-day gap would lose the end of one day.
 var POLL_MS = { hourly: 3600000, daily: DAY_MS, weekly: 7 * DAY_MS, biweekly: 13 * DAY_MS }
-var MARKET_MIN_MS = 3600000
 
 var METRICS = ["clones", "uniqueClones", "views", "uniqueViews", "listingViews", "copies", "hearts"]
 var METRIC_LABELS = {
