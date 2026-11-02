@@ -12,7 +12,12 @@ Plan: `~/.claude/plans/can-we-make-an-melodic-wind.md`. Work on branch `first-bu
 - [x] tests/panel_test.py (14, fake GitHub + fake secret-tool); live public-API run OK (omatuple id + listing stats)
 - [x] README, SECURITY.md, preview.png (tools/preview), CI workflow
 - [ ] Gavin: approve the look (preview.png) and the PR; merge
-- [ ] Live test in Gavin's bar (needs his OK for omarchy-restart-shell)
+- [x] Live test in Gavin's bar (2026-11-01): signed in via the app, omatuple matches GitHub (551/152 clones,
+      165/4 views); token only in the keyring (not in history.json, shell.json, any /proc cmdline, or the shell log).
+      Live bugs found and fixed: zero-size widget; device-flow poll stalls (20 s request timeout + retry);
+      slow_down loop (poll 1 s behind GitHub's interval, use the interval it sends). Copy-code button and
+      example placeholder added at Gavin's request.
+      Note: `qs log -f` (log follower) aborts on exit (Quickshell bug); read logs with plain `qs log -i <id>`.
 - [ ] Gavin: enable private vulnerability reporting (SECURITY.md points to it)
 - [ ] Marketplace submission (show Gavin the exact text first)
 
