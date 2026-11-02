@@ -24,7 +24,11 @@ Plan: `~/.claude/plans/can-we-make-an-melodic-wind.md`. Work on branch `first-bu
       + each later day's unique number; 14 days = GitHub's own number. Blocks removed (fb45a0a).
       GLM review of the new rule: one dead constant, removed (c815453); "nothing further to suggest".
 - [ ] Gavin: look at preview.png and the new pages, merge PR #2
-- [ ] Live check of 0.2.0 in Gavin's bar (needs his OK for a shell restart): compact/tall with many repos
+- [x] Live check of 0.2.0 in Gavin's bar (2026-11-02, Omarchy 4.5.0rc3): numbers match GitHub exactly; fixed a
+      new repo's ran-ahead first window (79256f3) and 14d = GitHub's window (40b4d76); refresh replays the
+      reveal (bd60f2e). GLM: "Nothing left to change" at bd60f2e.
+- [ ] Gavin: click through repo / settings / help pages on 4.5.0rc3 (couldn't click from Claude's side)
+- [ ] Local panel tests: installed Omarchy 4.5.0rc3 breaks the harness (new Commons types); use OMARCHY_SHELL=<v4.0.6 shell/>
 - [x] Live test in Gavin's bar (2026-11-01): signed in via the app, omatuple matches GitHub (551/152 clones,
       165/4 views); token only in the keyring (not in history.json, shell.json, any /proc cmdline, or the shell log).
       Live bugs found and fixed: zero-size widget; device-flow poll stalls (20 s request timeout + retry);
