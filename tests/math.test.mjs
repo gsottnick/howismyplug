@@ -234,6 +234,7 @@ test("Gavin's real omatuple numbers: 152 when first checked, + 46 on 11/01 = 198
   s = M.recordTraffic(s, M.parseTraffic(answer(next, 679, 191), "clones"), Date.UTC(2026, 10, 2, 12))
   assert.equal(M.uniquesFor(s, "all", "2026-11-02"), 198)
   assert.equal(M.uniquesFor(s, "14d", "2026-11-02"), 191)
+  assert.equal(M.trafficFor(s, "14d", "2026-11-02").count, 679, "14 days = GitHub's own window, even though it ends on 11/01")
   assert.equal(M.trafficFor(s, "all", "2026-11-02").count, 551 + 128)
   // A file from 0.1.0 starts lifetime counting from the 14-day number it kept.
   const migrated = M.cleanSeries({ days: next, last14: { count: 679, uniques: 191 }, last14Day: "2026-11-02" })

@@ -192,6 +192,9 @@ function sumDays(days, start) {
 // exact 14-day counts (see uniquesFor).
 function trafficFor(series, period, today) {
   if (!series) return { count: 0, uniques: 0, exactUniques: false }
+  // "14 days" is GitHub's own window (it can end a day or two before today),
+  // so both numbers match its traffic page exactly.
+  if (period === "14d" && series.last14) return { count: series.last14.count, uniques: series.last14.uniques, exactUniques: true }
   var s = sumDays(series.days || {}, periodStart(period, today))
   return { count: s.count, uniques: uniquesFor(series, period, today), exactUniques: period === "14d" }
 }

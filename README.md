@@ -99,6 +99,9 @@ cd tests && ../.venv-harness/bin/python -m unittest panel_test -v   # the real p
 omarchy plugin validate .
 ```
 
+The panel tests load Omarchy's shell components from `/usr/share/omarchy/shell`; if your Omarchy is
+newer than the version CI pins (`OMARCHY_REF` in `.github/workflows/tests.yml`), point
+`OMARCHY_SHELL` at a checkout of that version's `shell/` folder.
 The panel tests run the real QML against a local fake of GitHub and the marketplace and a fake
 `secret-tool`, so they never touch your account or keyring. `tools/preview/make-preview.py`
 rebuilds `preview.png`.
