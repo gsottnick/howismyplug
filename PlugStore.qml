@@ -108,15 +108,41 @@ Singleton {
   }
 
   // ── HTTP ────────────────────────────────────────────────────────────
+  // Every request answers exactly once: with GitHub's reply, or with status 0
+  // after 20 s. A reply that never comes (a stalled reused connection) must not
+  // stop a sign-in or a check without a word.
+  property var _inflight: []
   function request(method, url, headers, body, done) {
     var x = new XMLHttpRequest()
+    var entry = { x: x, started: Date.now(), answered: false, done: done }
     x.onreadystatechange = function() {
-      if (x.readyState === XMLHttpRequest.DONE) done(x.status, x.responseText)
+      if (x.readyState !== XMLHttpRequest.DONE || entry.answered) return
+      entry.answered = true
+      root._inflight = root._inflight.filter(function(e) { return e !== entry })
+      done(x.status, x.responseText)
     }
+    root._inflight = root._inflight.concat([entry])
     x.open(method, url)
     for (var k in headers) x.setRequestHeader(k, headers[k])
     x.send(body || null)
   }
+
+  Timer {
+    interval: 2000
+    running: root._inflight.length > 0
+    repeat: true
+    onTriggered: {
+      var now = Date.now()
+      root._inflight.forEach(function(e) {
+        if (e.answered || now - e.started < root.requestTimeoutMs) return
+        e.answered = true
+        try { e.x.abort() } catch (err) {}
+        e.done(0, "")
+      })
+      root._inflight = root._inflight.filter(function(e) { return !e.answered })
+    }
+  }
+  property int requestTimeoutMs: Number(Quickshell.env("HOWISMYPLUG_TEST_TIMEOUT_MS")) > 0 && root.testBase ? Number(Quickshell.env("HOWISMYPLUG_TEST_TIMEOUT_MS")) : 20000
 
   function github(path, done) {
     var h = { "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "HowIsMyPlug" }
@@ -274,6 +300,8 @@ Singleton {
                    + "&grant_type=" + encodeURIComponent("urn:ietf:params:oauth:grant-type:device_code"),
                    function(status, body) {
         if (!root.signingIn) return
+        // No answer or a server hiccup: keep asking until the code expires.
+        if (status !== 200) { devicePoll.restart(); return }
         var r = Model.parseTokenPoll(body)
         if (r.token) { root.cancelSignIn(); root.useToken(r.token, "app"); return }
         if (r.error) { root.cancelSignIn(); root.authError = r.error; return }

@@ -5,6 +5,7 @@ Authorization header so tests can check where the token went."""
 
 import base64
 import json
+import time
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -29,8 +30,11 @@ class Fake:
         self.requests = []     # (method, path, authorization header)
         self.token_polls = 0
         self.pending_polls = 0  # how many polls answer "authorization_pending" first
+        self.hang_polls = 0     # how many token polls never answer (a stalled connection)
         self.valid_tokens = {TOKEN, PAT, PAT2}
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
+        self.server.daemon_threads = True    # a hung request must not hold up teardown
+        self.server.block_on_close = False
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
     @property
@@ -66,6 +70,9 @@ class Fake:
                                            "expires_in": 900, "interval": 5})
                 if self.path == "/login/login/oauth/access_token":
                     fake.token_polls += 1
+                    if fake.token_polls <= fake.hang_polls:
+                        time.sleep(30)  # longer than the plugin's timeout; it gives up first
+                        return
                     if fake.token_polls <= fake.pending_polls:
                         return self.send(200, {"error": "authorization_pending"})
                     return self.send(200, {"access_token": TOKEN, "token_type": "bearer", "scope": ""})

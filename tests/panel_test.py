@@ -239,6 +239,15 @@ class PanelTest(unittest.TestCase):
         self.assertEqual(s["state"]["repos"][0]["access"], "ok")
         self.assert_token_stays_private(h, fake_github.TOKEN)
 
+    def test_sign_in_survives_a_poll_that_never_answers(self):
+        self.fake.hang_polls = 1
+        h = self.harness()
+        h.env["HOWISMYPLUG_TEST_TIMEOUT_MS"] = "3000"
+        s = h.run(["sign-in", "wait:19000"], step_delay=500)
+        self.assertGreaterEqual(self.fake.token_polls, 2, "asked again after the stuck poll")
+        self.assertTrue(s["signedIn"])
+        self.assertEqual(h.keyring_secret(), fake_github.TOKEN)
+
     def test_the_copy_button_copies_the_sign_in_code(self):
         self.fake.pending_polls = 99
         h = self.harness()
