@@ -15,8 +15,13 @@ Plan: `~/.claude/plans/can-we-make-an-melodic-wind.md`. Work on branch `first-bu
       settings page (bar source+stat, size, colour, count mode, animations, combined totals/milestones,
       defaults for new repos), help page with setup steps, fixed-height dropdown (lists scroll),
       lifetime uniques by 14-day blocks (tests/math.test.mjs), preview "g" fix.
-- [ ] GLM review loop on PR #1 (in Gavin's HIMP herdr tab) until no changes are suggested
-- [ ] Gavin: approve the look (preview.png) and the PR; merge
+- [x] PR #1 (0.1.0) merged by Gavin at 57a4704.
+- [x] PR #2 (0.2.0, round 2) opened; GLM review loop in Gavin's HIMP herdr tab (OC | HIMP | Build/Rev, pane wV:p2):
+      round 1 found a possible double count of returners in finished blocks -> fixed (no correction,
+      23:55 UTC boundary check, per-block exactness tests); round 2 found a duplicated objectName -> fixed;
+      round 3 at 452f4b6: "Nothing else left to change."
+- [ ] Gavin: look at preview.png and the new pages, merge PR #2
+- [ ] Live check of 0.2.0 in Gavin's bar (needs his OK for a shell restart): compact/tall with many repos
 - [x] Live test in Gavin's bar (2026-11-01): signed in via the app, omatuple matches GitHub (551/152 clones,
       165/4 views); token only in the keyring (not in history.json, shell.json, any /proc cmdline, or the shell log).
       Live bugs found and fixed: zero-size widget; device-flow poll stalls (20 s request timeout + retry);
