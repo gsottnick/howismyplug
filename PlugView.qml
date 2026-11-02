@@ -51,8 +51,9 @@ Item {
   Timer { id: confirmTimer; interval: 4000; onTriggered: root.confirmRemove = false }
   Timer { id: copiedTimer; interval: 2000; onTriggered: root.codeCopied = false }
 
-  readonly property var checkOptions: [{ value: "hourly", label: "Hourly" }, { value: "daily", label: "Daily" },
-                                       { value: "weekly", label: "Weekly" }, { value: "biweekly", label: "2 weeks" }]
+  readonly property var checkOptions: [{ value: "hourly", label: "Hour" }, { value: "daily", label: "Day" },
+                                       { value: "twodays", label: "2 days" }, { value: "weekly", label: "Week" },
+                                       { value: "biweekly", label: "2 weeks" }]
   readonly property var metricOptions: Model.METRICS.map(function(m) {
     return { value: m, label: Model.METRIC_LABELS[m].charAt(0).toUpperCase() + Model.METRIC_LABELS[m].slice(1) }
   })
@@ -438,7 +439,7 @@ Item {
           PanelSectionHeader { text: "CHECKS"; foreground: root.fg; fontFamily: root.ff }
           ChoiceRow {
             objectName: "repoCheckGithub"
-            label: "Check GitHub traffic" + (root.repo && root.repo.lastGithub ? " · last " + root.ago(root.repo.lastGithub) : "")
+            label: "Check GitHub traffic every" + (root.repo && root.repo.lastGithub ? " · last " + root.ago(root.repo.lastGithub) : "")
             options: root.checkOptions
             value: root.repo ? root.repo.checkGithub : "daily"
             onPicked: function(v) { PlugStore.setRepoOption(root.repo.repo, "checkGithub", v) }
@@ -446,7 +447,7 @@ Item {
           ChoiceRow {
             objectName: "repoCheckListing"
             visible: !!root.repo && root.repo.pluginId !== ""
-            label: "Check the listing" + (root.repo && root.repo.lastListing ? " · last " + root.ago(root.repo.lastListing) : "")
+            label: "Check the listing every" + (root.repo && root.repo.lastListing ? " · last " + root.ago(root.repo.lastListing) : "")
             options: root.checkOptions
             value: root.repo ? root.repo.checkListing : "daily"
             onPicked: function(v) { PlugStore.setRepoOption(root.repo.repo, "checkListing", v) }
@@ -589,14 +590,14 @@ Item {
           PanelSectionHeader { text: "NEW REPOS START WITH"; foreground: root.fg; fontFamily: root.ff }
           ChoiceRow {
             objectName: "defaultCheckGithubChoice"
-            label: "Check GitHub traffic"
+            label: "Check GitHub traffic every"
             options: root.checkOptions
             value: root.panel ? root.panel.defaultCheckGithub : "daily"
             onPicked: function(v) { root.save({ defaultCheckGithub: v }) }
           }
           ChoiceRow {
             objectName: "defaultCheckListingChoice"
-            label: "Check the listing"
+            label: "Check the listing every"
             options: root.checkOptions
             value: root.panel ? root.panel.defaultCheckListing : "daily"
             onPicked: function(v) { root.save({ defaultCheckListing: v }) }

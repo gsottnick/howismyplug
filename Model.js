@@ -10,7 +10,7 @@ var GITHUB_WINDOW_DAYS = 14
 
 // Bi-weekly is 13 days: GitHub's 14-day window includes today, so a full
 // 14-day gap would lose the end of one day.
-var POLL_MS = { hourly: 3600000, daily: DAY_MS, weekly: 7 * DAY_MS, biweekly: 13 * DAY_MS }
+var POLL_MS = { hourly: 3600000, daily: DAY_MS, twodays: 2 * DAY_MS, weekly: 7 * DAY_MS, biweekly: 13 * DAY_MS }
 
 var METRICS = ["clones", "uniqueClones", "views", "uniqueViews", "listingViews", "copies", "hearts"]
 var METRIC_LABELS = {
@@ -379,7 +379,7 @@ function cleanMarket(m) {
 }
 
 var ACCESS = ["", "ok", "denied", "missing"]
-var CHECKS = ["hourly", "daily", "weekly", "biweekly"]
+var CHECKS = ["hourly", "daily", "twodays", "weekly", "biweekly"]
 
 function cleanCheck(v, fallback) {
   return CHECKS.indexOf(v) >= 0 ? v : (CHECKS.indexOf(fallback) >= 0 ? fallback : "daily")

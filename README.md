@@ -37,7 +37,7 @@ Everything is in the dropdown. **⚙** opens the settings, **?** the help, and e
 opens its own page.
 
 **Each repo** (tap it in the list): its own numbers for the chosen period, how often to check GitHub
-traffic and the listing (hourly, daily, weekly, every 2 weeks), its own milestones (on/off, which stat,
+traffic and the listing (every hour, day, 2 days, week or 2 weeks; changing it checks right away), its own milestones (on/off, which stat,
 every how many), and links to the repo and its listing.
 
 **Settings page**:
@@ -67,6 +67,8 @@ same settings also appear in Omarchy's widget settings.
   "14 days" shows GitHub's own number, the same as its traffic page. GitHub's window rolls (a day in, a
   day out) and every day is saved before it drops out. `tests/math.test.mjs` proves this against
   simulated traffic on every schedule.
+- **Computer off?** Every number is stored under its date. The next check fills in the days that were
+  missed, as long as it happens within 14 days.
 - **Gaps**: if the computer is off (or the shell isn't running) for more than 14 days, the days
   GitHub dropped in between are gone. The dropdown says which ones.
 - **Marketplace numbers** are the marketplace's own lifetime counts; periods show the growth

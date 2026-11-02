@@ -98,6 +98,10 @@ Singleton {
     else if (key === "milestone") r.milestone = Model.cleanMilestone(value)
     else return
     commit(s)
+    // A new schedule starts with a check right now, so no day can slip
+    // between the old schedule and the new one.
+    if (key === "checkGithub") pollRepo(name)
+    else if (key === "checkListing") pollMarket([name])
     schedule()
   }
 
@@ -519,6 +523,9 @@ Singleton {
     interval: 60000; running: true; repeat: true
     onTriggered: {
       root.now = Date.now()
+      // After the computer sleeps, the schedule timer can be late: anything
+      // already due is checked now.
+      if (!root.polling && root.stateLoaded && Model.nextDelay(root.state.repos, root.now, root.signedIn) === 0) root.tick()
       if (root.polling && root.now - root._pollStarted > 120000) {
         root._pending = 0
         root.polling = false

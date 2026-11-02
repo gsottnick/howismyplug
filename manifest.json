@@ -149,6 +149,7 @@
         "options": [
           "hourly",
           "daily",
+          "twodays",
           "weekly",
           "biweekly"
         ],
@@ -161,6 +162,7 @@
         "options": [
           "hourly",
           "daily",
+          "twodays",
           "weekly",
           "biweekly"
         ],
