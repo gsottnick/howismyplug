@@ -1,6 +1,92 @@
 # HowIsMyPlug?
 
-An Omarchy bar plugin for plugin authors: lifetime clone and view counts for your GitHub repos, plus
-your Omarchy marketplace listing's views, copies and hearts. Free, local, no paid traffic service.
+![HowIsMyPlug? in the Omarchy bar](preview.png)
 
-Work in progress.
+An Omarchy bar plugin for people who publish Omarchy plugins. It shows how your plugins are doing:
+
+- **Clones and repo views** from GitHub, for every repo you track. GitHub only keeps 14 days of
+  traffic; HowIsMyPlug? saves each day on your machine, so you keep the full history for free.
+- **Listing views, install-command copies and hearts** from your Omarchy marketplace listing.
+- **Milestones**: open the dropdown after you pass 100 clones (or any number and stat you pick)
+  and it celebrates, once.
+
+Pick a period (7, 14 or 30 days, or all time) and total, unique or both counts in the dropdown.
+
+## Quick start
+
+1. Add the plugin from the Omarchy plugin marketplace, or:
+   `omarchy plugin add https://github.com/gsottnick/howismyplug`
+2. Open the dropdown and type a repo you own (`owner/repo`). Marketplace numbers show right away.
+3. For clones and repo views, click **Sign in with GitHub**. The code is copied for you: paste it
+   on the page that opens and click Authorize. Then click **Give access** (or **Choose repos**)
+   and pick your repos. Picking "All repositories" means you never have to do it again.
+
+That's all. No API key to create, no server, no account with anyone but GitHub.
+
+### Prefer a token?
+
+Click **Use a token instead** and paste a
+[fine-grained token](https://github.com/settings/personal-access-tokens/new) with
+*Repository permissions → Administration: Read-only* for the repos you track. GitHub files traffic
+under "administration"; read-only can't change anything.
+
+## Settings
+
+Change them in Omarchy's bar widget settings. The period can also be picked straight from the dropdown.
+
+| Setting | Choices | Default |
+| --- | --- | --- |
+| Check GitHub traffic | hourly, daily, weekly, every 2 weeks | daily |
+| Clones and views | total, unique, both | both |
+| Period shown | 7 days, 14 days, 30 days, all time | all time |
+| Number in the bar | clones, unique clones, repo views, unique repo views, listing views, copies, hearts | clones |
+| Animations | on, off | on |
+| Milestones | on, off | on |
+| Milestones count | any stat above | clones |
+| A milestone every | any number | 100 |
+
+## Good to know
+
+- **History starts when you add a repo**, plus the 14 days GitHub still has at that moment.
+- **Unique numbers** for 7 days, 30 days and all time add up each day's unique visitors, so someone
+  who comes back on another day counts twice. GitHub doesn't keep more than that. The 14-day
+  unique number is GitHub's exact count.
+- **Gaps**: if the computer is off (or the shell isn't running) for more than 14 days, the days
+  GitHub dropped in between are gone. The dropdown says which ones.
+- **Marketplace numbers** are the marketplace's own lifetime counts; periods show the growth
+  since HowIsMyPlug? started watching.
+- "Every 2 weeks" checks every 13 days, so no day falls out of GitHub's 14-day window.
+
+## Privacy and security
+
+Your GitHub sign-in stays in your system keyring and only ever goes to GitHub. The app can only
+read traffic on the repos you choose, and you can revoke it any time on GitHub
+(Settings → Applications). Nothing is sent anywhere else. The full list is in
+[SECURITY.md](SECURITY.md).
+
+Where things live:
+
+| What | Where |
+| --- | --- |
+| GitHub sign-in or token | System keyring (GNOME Keyring), item "HowIsMyPlug? GitHub sign-in" |
+| Traffic history | `~/.local/state/howismyplug/history.json` (only you can read it) |
+| Settings | Omarchy's `shell.json`, like every bar widget |
+
+To start over: Sign out in the dropdown, then delete `~/.local/state/howismyplug`.
+
+## Development
+
+```bash
+node --test 'tests/*.test.mjs'           # logic + security rules
+python3 -m venv .venv-harness && .venv-harness/bin/pip install 'PySide6>=6.10,<6.12'
+cd tests && ../.venv-harness/bin/python -m unittest panel_test -v   # the real panel, fake GitHub
+omarchy plugin validate .
+```
+
+The panel tests run the real QML against a local fake of GitHub and the marketplace and a fake
+`secret-tool`, so they never touch your account or keyring. `tools/preview/make-preview.py`
+rebuilds `preview.png`.
+
+## License
+
+MIT

@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.gsottnick.howismyplug",
+  "name": "HowIsMyPlug?",
+  "version": "0.1.0",
+  "author": "Gavin Sottnick",
+  "license": "MIT",
+  "description": "For plugin authors: lifetime clones and repo views for your GitHub repos, plus your marketplace listing's views, copies and hearts. Free, local, with milestone celebrations.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "HowIsMyPlug?",
+    "description": "Clones, repo views and marketplace stats for the plugins you publish, kept forever instead of GitHub's 14 days.",
+    "category": "Developer Tools",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "pollEvery": "daily",
+      "countMode": "both",
+      "period": "all",
+      "barStat": "clones",
+      "animations": true,
+      "milestones": true,
+      "milestoneMetric": "clones",
+      "milestoneStep": 100
+    },
+    "schema": [
+      {
+        "key": "pollEvery",
+        "type": "enum",
+        "label": "Check GitHub traffic",
+        "options": ["hourly", "daily", "weekly", "biweekly"],
+        "defaultValue": "daily"
+      },
+      {
+        "key": "countMode",
+        "type": "enum",
+        "label": "Clones and views: total, unique, or both",
+        "options": ["total", "unique", "both"],
+        "defaultValue": "both"
+      },
+      {
+        "key": "period",
+        "type": "enum",
+        "label": "Period shown",
+        "options": ["7d", "14d", "30d", "all"],
+        "defaultValue": "all"
+      },
+      {
+        "key": "barStat",
+        "type": "enum",
+        "label": "Number in the bar (all tracked repos, all time)",
+        "options": ["clones", "uniqueClones", "views", "uniqueViews", "listingViews", "copies", "hearts"],
+        "defaultValue": "clones"
+      },
+      {
+        "key": "animations",
+        "type": "boolean",
+        "label": "Animations",
+        "defaultValue": true
+      },
+      {
+        "key": "milestones",
+        "type": "boolean",
+        "label": "Milestone celebration when you open the dropdown",
+        "defaultValue": true
+      },
+      {
+        "key": "milestoneMetric",
+        "type": "enum",
+        "label": "Milestones count",
+        "options": ["clones", "uniqueClones", "views", "uniqueViews", "listingViews", "copies", "hearts"],
+        "defaultValue": "clones"
+      },
+      {
+        "key": "milestoneStep",
+        "type": "integer",
+        "label": "A milestone every",
+        "min": 1,
+        "max": 1000000,
+        "step": 10,
+        "defaultValue": 100
+      }
+    ]
+  }
+}
