@@ -259,6 +259,9 @@ Singleton {
   }
 
   // ── GitHub sign-in (device flow) ────────────────────────────────────
+  // Poll a second later than GitHub asks: right at its limit, timing jitter
+  // reads as too early, each "slow_down" adds 5 s, and the loop never ends.
+  readonly property int pollMarginMs: 1000
   property string _deviceCode: ""
   property double _deviceDeadline: 0
 
@@ -275,7 +278,7 @@ Singleton {
       root.verifyUri = d.uri
       root._deviceCode = d.deviceCode
       root._deviceDeadline = Date.now() + d.expiresMs
-      devicePoll.interval = d.intervalMs
+      devicePoll.interval = d.intervalMs + root.pollMarginMs
       devicePoll.restart()
       copy(d.userCode)
       Qt.openUrlExternally(d.uri)
@@ -305,7 +308,7 @@ Singleton {
         var r = Model.parseTokenPoll(body)
         if (r.token) { root.cancelSignIn(); root.useToken(r.token, "app"); return }
         if (r.error) { root.cancelSignIn(); root.authError = r.error; return }
-        if (r.slowDown) devicePoll.interval += 5000
+        if (r.slowDown) devicePoll.interval = r.intervalMs + root.pollMarginMs
         devicePoll.restart()
       })
     }

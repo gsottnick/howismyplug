@@ -143,7 +143,8 @@ function parseTokenPoll(raw) {
     return /^[A-Za-z0-9_]{20,255}$/.test(t) ? { token: t } : { error: "GitHub sent an unexpected answer" }
   }
   if (p.error === "authorization_pending") return { wait: true }
-  if (p.error === "slow_down") return { slowDown: true }
+  // GitHub sends the interval it now requires (5 s more each time).
+  if (p.error === "slow_down") return { slowDown: true, intervalMs: Math.max(5, Math.min(120, safeCount(p.interval) || 10)) * 1000 }
   if (p.error === "expired_token") return { error: "The code expired. Sign in again." }
   if (p.error === "access_denied") return { error: "Sign-in was cancelled on GitHub." }
   return { error: "GitHub sign-in failed" }

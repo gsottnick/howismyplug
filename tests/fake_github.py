@@ -31,6 +31,10 @@ class Fake:
         self.token_polls = 0
         self.pending_polls = 0  # how many polls answer "authorization_pending" first
         self.hang_polls = 0     # how many token polls never answer (a stalled connection)
+        self.strict = False     # enforce the poll interval like GitHub: too early -> slow_down, +5 s
+        self.interval = 5
+        self.last_poll = 0.0
+        self.slow_downs = 0
         self.valid_tokens = {TOKEN, PAT, PAT2}
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
         self.server.daemon_threads = True    # a hung request must not hold up teardown
@@ -65,11 +69,20 @@ class Fake:
                 self.rfile.read(length)
                 fake.requests.append(("POST", self.path, self.headers.get("Authorization")))
                 if self.path == "/login/login/device/code":
+                    fake.last_poll = time.monotonic()
                     return self.send(200, {"device_code": "dc0123456789", "user_code": "ABCD-1234",
                                            "verification_uri": "https://github.com/login/device",
                                            "expires_in": 900, "interval": 5})
                 if self.path == "/login/login/oauth/access_token":
                     fake.token_polls += 1
+                    now = time.monotonic()
+                    # GitHub-like strictness, with a little slack the other way.
+                    too_early = fake.strict and now - fake.last_poll < fake.interval + 0.5
+                    fake.last_poll = now
+                    if too_early:
+                        fake.interval += 5
+                        fake.slow_downs += 1
+                        return self.send(200, {"error": "slow_down", "interval": fake.interval})
                     if fake.token_polls <= fake.hang_polls:
                         time.sleep(30)  # longer than the plugin's timeout; it gives up first
                         return

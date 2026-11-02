@@ -239,6 +239,24 @@ class PanelTest(unittest.TestCase):
         self.assertEqual(s["state"]["repos"][0]["access"], "ok")
         self.assert_token_stays_private(h, fake_github.TOKEN)
 
+    def test_sign_in_gets_through_a_strict_poll_interval(self):
+        # GitHub answers slow_down to a poll that is even slightly early and adds
+        # 5 s each time; polling right at the limit never gets the token.
+        self.fake.strict = True
+        self.fake.pending_polls = 1
+        h = self.harness()
+        s = h.run(["sign-in", "wait:16000"], step_delay=500)
+        self.assertEqual(self.fake.slow_downs, 0, "never polls too early")
+        self.assertTrue(s["signedIn"])
+
+    def test_sign_in_follows_the_interval_github_asks_for(self):
+        self.fake.strict = True
+        self.fake.interval = 7      # the device code says 5 s; the server wants 7.5 s at first
+        h = self.harness()
+        s = h.run(["sign-in", "wait:24000"], step_delay=500)
+        self.assertLessEqual(self.fake.slow_downs, 1, "one slow_down, then it waits as told")
+        self.assertTrue(s["signedIn"])
+
     def test_sign_in_survives_a_poll_that_never_answers(self):
         self.fake.hang_polls = 1
         h = self.harness()
