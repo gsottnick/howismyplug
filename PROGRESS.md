@@ -11,6 +11,11 @@ Plan: `~/.claude/plans/can-we-make-an-melodic-wind.md`. Work on branch `first-bu
 - [x] PlugStore.qml, Panel.qml, PlugView.qml, manifest.json, qmldir; animations copied from token-payoff
 - [x] tests/panel_test.py (14, fake GitHub + fake secret-tool); live public-API run OK (omatuple id + listing stats)
 - [x] README, SECURITY.md, preview.png (tools/preview), CI workflow
+- [x] Round 2 (Gavin, 2026-11-01): per-repo pages (own numbers, GitHub/listing check intervals, milestones),
+      settings page (bar source+stat, size, colour, count mode, animations, combined totals/milestones,
+      defaults for new repos), help page with setup steps, fixed-height dropdown (lists scroll),
+      lifetime uniques by 14-day blocks (tests/math.test.mjs), preview "g" fix.
+- [ ] GLM review loop on PR #1 (in Gavin's HIMP herdr tab) until no changes are suggested
 - [ ] Gavin: approve the look (preview.png) and the PR; merge
 - [x] Live test in Gavin's bar (2026-11-01): signed in via the app, omatuple matches GitHub (551/152 clones,
       165/4 views); token only in the keyring (not in history.json, shell.json, any /proc cmdline, or the shell log).

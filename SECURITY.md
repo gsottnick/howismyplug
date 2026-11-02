@@ -36,6 +36,10 @@ Only these hosts, only over HTTPS:
 | `api.github.com` | Traffic, and each tracked repo's `manifest.json` to find its plugin id | Your token |
 | `api.omarchyplugins.com` | Marketplace listing stats (public, no login) | Nothing |
 
+Links the dropdown opens in your browser (never fetched by the plugin): the repo on `github.com`, the
+app's install page, GitHub's token page, and the listing on `plugins.omarchy.org`. Each is built only
+from a validated repo name or plugin id.
+
 The tests point every request at a local fake server through `HOWISMYPLUG_TEST_BASE`, which is
 ignored unless it is exactly `http://127.0.0.1:<port>`.
 

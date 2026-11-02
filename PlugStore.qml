@@ -52,17 +52,18 @@ Singleton {
   property bool polling: false
   property int _pending: 0
   property string pollError: ""
-  property string missed: ""              // days GitHub no longer has, from a long gap
   property double now: Date.now()
 
-  property string pollEvery: "daily"
+  // Defaults for repos added from now on (each repo keeps its own afterwards).
+  property string defaultCheckGithub: "daily"
+  property string defaultCheckListing: "daily"
 
   readonly property string installUrl: "https://github.com/apps/" + appSlug + "/installations/new"
   readonly property string tokenHelpUrl: "https://github.com/settings/personal-access-tokens/new"
 
-  function applySettings(every) {
-    root.pollEvery = Model.POLL_MS[every] ? every : "daily"
-    root.schedule()
+  function applySettings(checkGithub, checkListing) {
+    root.defaultCheckGithub = Model.cleanCheck(checkGithub)
+    root.defaultCheckListing = Model.cleanCheck(checkListing)
   }
 
   // ── repos ───────────────────────────────────────────────────────────
@@ -74,9 +75,10 @@ Singleton {
       if (state.repos[i].repo.toLowerCase() === name.toLowerCase()) return "Already tracked"
     if (state.repos.length >= 100) return "That's the limit of 100 repos"
     var s = copyState()
-    s.repos.push(Model.newRepo(name, Date.now()))
+    s.repos.push(Model.newRepo(name, Date.now(), { checkGithub: root.defaultCheckGithub, checkListing: root.defaultCheckListing }))
     commit(s)
     pollRepo(name)
+    schedule()
     return ""
   }
 
@@ -84,14 +86,35 @@ Singleton {
     var s = copyState()
     s.repos = s.repos.filter(function(r) { return r.repo !== name })
     commit(s)
+    schedule()
   }
 
-  function seenMilestone(metric) {
-    return state.seen[metric] === undefined ? -1 : state.seen[metric]
+  // A repo's own check intervals and milestone settings.
+  function setRepoOption(name, key, value) {
+    var s = copyState()
+    var r = Model.findRepo(s.repos, name)
+    if (!r) return
+    if (key === "checkGithub" || key === "checkListing") r[key] = Model.cleanCheck(value, r[key])
+    else if (key === "milestone") r.milestone = Model.cleanMilestone(value)
+    else return
+    commit(s)
+    schedule()
   }
 
-  function setSeenMilestone(metric, n) {
-    var s = copyState(); s.seen[metric] = n; commit(s)
+  // Milestones due now (see Model.milestoneCheck); records them as seen and
+  // returns the ones to celebrate.
+  function takeMilestones(combined) {
+    var r = Model.milestoneCheck(state.repos, combined, state.seen, Model.dayKey(Date.now()))
+    var keys = Object.keys(r.seen)
+    if (keys.length > 0) {
+      var s = copyState()
+      keys.forEach(function(k) {
+        var target = k === "" ? s.seen : (Model.findRepo(s.repos, k) || {}).seen
+        if (target) for (var m in r.seen[k]) target[m] = r.seen[k][m]
+      })
+      commit(s)
+    }
+    return r.celebrations
   }
 
   function copyState() { return JSON.parse(JSON.stringify(state)) }
@@ -151,33 +174,48 @@ Singleton {
   }
 
   // ── polling ─────────────────────────────────────────────────────────
+  // Each repo has its own GitHub and listing intervals; one timer wakes for
+  // whichever is due next. The refresh button checks everything now.
   function pollNow() {
     if (!stateLoaded) return
     root.now = Date.now()
-    var gap = Model.missedRange(state.lastPoll, root.now)
-    if (gap) root.missed = gap
     root.pollError = ""
-    for (var i = 0; i < state.repos.length; i++) pollRepo(state.repos[i].repo)
-    pollMarket(true)
+    var names = state.repos.map(function(r) { return r.repo })
+    names.forEach(pollRepo)
+    pollMarket(names)
     var s = copyState(); s.lastPoll = root.now; commit(s)
+    schedule()
+  }
+
+  function tick() {
+    if (!stateLoaded) return
+    root.now = Date.now()
+    var github = root.signedIn ? Model.dueRepos(state.repos, "github", root.now) : []
+    var listing = Model.dueRepos(state.repos.filter(function(r) { return r.pluginId !== "" }), "listing", root.now)
+    github.forEach(pollRepo)
+    if (listing.length > 0) pollMarket(listing)
+    if (github.length + listing.length > 0) { var s = copyState(); s.lastPoll = root.now; commit(s) }
     schedule()
   }
 
   function pollRepo(name) {
     var path = "/repos/" + Model.repoPath(name)
     if (!path || path === "/repos/") return
-    var repo = state.repos.filter(function(r) { return r.repo === name })[0]
-    if (repo && !repo.idChecked) lookUpPluginId(name, path)
+    var repo = Model.findRepo(state.repos, name)
+    if (!repo) return
+    if (!repo.idChecked) lookUpPluginId(name, path)
     if (!root.signedIn) return
-    ["clones", "views"].forEach(function(kind) {
+    var started = Date.now()
+    // Days that fell out of GitHub's 14-day window since this repo's last check.
+    updateRepo(name, function(r) { r.missed = Model.missedRange(r.lastGithub, started); r.lastGithub = started })
+    var kinds = ["clones", "views"]
+    kinds.forEach(function(kind) {
       begin()
       github(path + "/traffic/" + kind, function(status, body) {
-        var today = Model.dayKey(Date.now())
         if (status === 200) {
           var t = Model.parseTraffic(body, kind)
           if (t) updateRepo(name, function(r) {
-            var old = r[kind] || { days: {} }
-            r[kind] = { days: Model.mergeDays(old.days, t.days), last14: { count: t.count, uniques: t.uniques }, last14Day: today }
+            r[kind] = Model.recordTraffic(r[kind], t, Date.now())
             r.access = "ok"
           })
         } else if (status === 401) {
@@ -206,15 +244,20 @@ Singleton {
       }
       // Only a definite answer is remembered; a network error asks again next poll.
       if (status === 200 || status === 404) updateRepo(name, function(r) { r.pluginId = id; r.idChecked = true })
-      if (id) pollMarket(false)
+      if (id) { pollMarket([name]); schedule() }
       finish()
     })
   }
 
-  function pollMarket(onlyIfStale) {
-    if (onlyIfStale && Date.now() - state.lastMarket < Model.MARKET_MIN_MS) return
-    var ids = state.repos.map(function(r) { return r.pluginId }).filter(function(id) { return id !== "" })
-    if (ids.length === 0) return
+  // Fresh listing numbers for these repos (one request covers them all).
+  function pollMarket(names) {
+    var wanted = state.repos.filter(function(r) { return r.pluginId !== "" && names.indexOf(r.repo) >= 0 })
+    if (wanted.length === 0) return
+    var ids = wanted.map(function(r) { return r.pluginId })
+    var started = Date.now()
+    var s0 = copyState()
+    s0.repos.forEach(function(r) { if (names.indexOf(r.repo) >= 0 && r.pluginId) r.lastListing = started })
+    root.state = s0
     begin()
     request("GET", root.marketHost + "/v1/stats", { "Accept": "application/json" }, null, function(status, body) {
       var stats = status === 200 ? Model.parseMarket(body, ids) : null
@@ -222,7 +265,9 @@ Singleton {
         var today = Model.dayKey(Date.now())
         var s = copyState()
         s.lastMarket = Date.now()
-        s.repos.forEach(function(r) { if (stats[r.pluginId]) r.market = Model.recordMarket(r.market, stats[r.pluginId], today) })
+        s.repos.forEach(function(r) {
+          if (names.indexOf(r.repo) >= 0 && stats[r.pluginId]) r.market = Model.recordMarket(r.market, stats[r.pluginId], today)
+        })
         root.state = s
       }
       finish()
@@ -242,20 +287,20 @@ Singleton {
 
   function schedule() {
     if (!stateLoaded) return
-    pollTimer.interval = Math.max(1000, Model.pollDelay(state.lastPoll, root.pollEvery, Date.now()))
+    var d = Model.nextDelay(state.repos, Date.now(), root.signedIn)
+    if (d < 0) { pollTimer.stop(); return }
+    pollTimer.interval = Math.max(1000, d)
     pollTimer.restart()
   }
 
   Timer {
     id: pollTimer
     repeat: false
-    onTriggered: root.pollNow()
+    onTriggered: root.tick()
   }
 
-  // The dropdown asks for fresh marketplace numbers when it opens.
   function panelOpened() {
     root.now = Date.now()
-    pollMarket(true)
   }
 
   // ── GitHub sign-in (device flow) ────────────────────────────────────
@@ -331,6 +376,7 @@ Singleton {
     root._clearQueued = false
     keyringNext()
     for (var i = 0; i < state.repos.length; i++) pollRepo(state.repos[i].repo)
+    schedule()
   }
 
   function signOut() {
@@ -339,6 +385,7 @@ Singleton {
     root._keyPending = ""
     root._clearQueued = true
     keyringNext()
+    schedule()
   }
 
   // Keyring writes run one at a time, newest wish last: a token saved or a
@@ -361,6 +408,15 @@ Singleton {
     if (!clipboard.running) { clipboard.stdinEnabled = true; clipboard.running = true }
   }
 
+  // Links built only from validated names, opened in the browser.
+  function openRepoPage(name) {
+    var path = Model.repoPath(name)
+    if (path) Qt.openUrlExternally("https://github.com/" + path)
+  }
+  function openListing(id) {
+    if (Model.validPluginId(id)) Qt.openUrlExternally("https://plugins.omarchy.org/plugin.html?id=" + encodeURIComponent(id))
+  }
+
   function openUrl(url) {
     if (url === root.installUrl || url === root.tokenHelpUrl || url === root.verifyUri) Qt.openUrlExternally(url)
   }
@@ -375,7 +431,7 @@ Singleton {
         var t = String(text || "").trim()
         if (/^[A-Za-z0-9_]{20,255}$/.test(t)) root._token = t
         root.keyringChecked = true
-        if (root.signedIn) root.pollNow()
+        root.tick()
       }
     }
     onExited: function(code) { if (code !== 0) root.keyringChecked = true }

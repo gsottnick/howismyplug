@@ -17,6 +17,7 @@ test("only the expected hosts, and only over HTTPS", () => {
     "https://api.github.com",
     "https://github.com",
     "https://api.omarchyplugins.com",
+    "https://plugins.omarchy.org",   // only opened in the browser (a listing link), never fetched
   ]
   for (const file of shipped) {
     for (const [url] of read(file).matchAll(/https?:\/\/[^\s"'`)\\]+/g)) {
@@ -71,7 +72,8 @@ test("nothing logs, escalates, or runs a shell on input", () => {
 test("text from the network is shown as plain text", () => {
   const view = read("PlugView.qml")
   // Every Text bound to repo names, errors or codes declares PlainText.
-  for (const marker of ["text: modelData.repo", "text: root.repoError", "text: PlugStore.userCode", "text: root.tokenError || PlugStore.authError", "text: root.repoLine(modelData)"]) {
+  for (const marker of ["text: modelData.repo", "text: root.repoError", "text: PlugStore.userCode", "text: root.tokenError || PlugStore.authError",
+                        "text: root.rowLine(modelData)", "text: PlugStore.pollError"]) {
     const at = view.indexOf(marker)
     assert.ok(at > 0, `missing ${marker}`)
     const block = view.slice(at, view.indexOf("}", at))

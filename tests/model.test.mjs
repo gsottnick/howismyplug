@@ -112,16 +112,18 @@ test("re-polling the same window never double counts; the larger value wins", ()
   assert.deepEqual(first["2026-10-31"], [4, 2], "inputs are not mutated")
 })
 
-test("period sums; unique is exact only for 14 days with today's reading", () => {
+test("period sums by calendar day; 14-day unique is GitHub's own count", () => {
   const today = "2026-11-01"
-  const days = {}
-  for (let i = 0; i < 40; i++) days[M.addDays(today, -i)] = [10, 2]
-  const series = { days, last14: { count: 140, uniques: 11 }, last14Day: today }
-  assert.deepEqual(M.trafficFor(series, "7d", today), { count: 70, uniques: 14, exactUniques: false })
+  const entries = []
+  for (let i = 13; i >= 0; i--) entries.push({ timestamp: M.addDays(today, -i) + "T00:00:00Z", count: 10, uniques: 2 })
+  let series = M.recordTraffic(null, M.parseTraffic(JSON.stringify({ count: 140, uniques: 11, clones: entries }), "clones"), Date.parse(today + "T12:00:00Z"))
+  // Older days kept from earlier checks.
+  for (let i = 14; i < 40; i++) series.days[M.addDays(today, -i)] = [10, 2]
+  assert.equal(M.trafficFor(series, "7d", today).count, 70)
   assert.deepEqual(M.trafficFor(series, "14d", today), { count: 140, uniques: 11, exactUniques: true })
-  assert.deepEqual(M.trafficFor(series, "30d", today), { count: 300, uniques: 60, exactUniques: false })
-  assert.deepEqual(M.trafficFor(series, "all", today), { count: 400, uniques: 80, exactUniques: false })
-  assert.equal(M.trafficFor({ ...series, last14Day: "2026-10-30" }, "14d", today).exactUniques, false)
+  assert.equal(M.trafficFor(series, "30d", today).count, 300)
+  assert.equal(M.trafficFor(series, "all", today).count, 400)
+  assert.equal(M.trafficFor(series, "all", today).uniques, 11, "tracking started with this window: one block so far")
   assert.deepEqual(M.trafficFor(null, "7d", today), { count: 0, uniques: 0, exactUniques: false })
 })
 
@@ -145,9 +147,11 @@ test("totals across repos and the bar metric", () => {
     { clones: { days: { [today]: [1, 1] } }, views: null, market: null },
   ]
   const t = M.totalsFor(repos, "all", today)
-  assert.deepEqual(t, { clones: { count: 6, uniques: 3 }, views: { count: 7, uniques: 3 }, market: { views: 4, copies: 1, hearts: 1 } })
+  assert.equal(t.clones.count, 6)
+  assert.equal(t.views.count, 7)
+  assert.deepEqual(t.market, { views: 4, copies: 1, hearts: 1 })
   assert.equal(M.metricValue(t, "clones"), 6)
-  assert.equal(M.metricValue(t, "uniqueViews"), 3)
+  assert.equal(M.metricValue(t, "views"), 7)
   assert.equal(M.metricValue(t, "copies"), 1)
   assert.equal(M.metricValue(t, "nonsense"), 6)
 
@@ -205,7 +209,9 @@ test("the state file is cleaned on load", () => {
   assert.equal(s.authMethod, "token")
   assert.deepEqual(s.seen, { clones: 3 })
   assert.deepEqual(s.repos.map((r) => r.repo), ["a/b", "c/d"])
-  assert.deepEqual(s.repos[0].clones, { days: { "2026-11-01": [3, 1] }, last14: { count: 3, uniques: 1 }, last14Day: "2026-11-01" })
+  // A file from before the 14-day-block fix: the window and its first day are recovered.
+  assert.deepEqual(s.repos[0].clones, { days: { "2026-11-01": [3, 1] }, anchor: "2026-10-19",
+    last14: { count: 3, uniques: 1, end: "2026-11-01" }, ends: { "2026-11-01": [1, 1] }, lb: {} })
   assert.deepEqual(Object.keys(s.repos[0].market.snaps), ["2026-11-01"])
   assert.equal(s.repos[1].pluginId, "")
   assert.equal(s.repos[1].access, "")
@@ -224,4 +230,61 @@ test("formatting", () => {
   assert.equal(M.countWords(1406, 383, "both", "clones"), "1,406 clones (383 unique)")
   assert.equal(M.countWords(1406, 383, "unique", "views"), "383 unique views")
   assert.equal(M.countWords(1406, 383, "total", "clones"), "1,406 clones")
+})
+
+test("per-repo schedule: each repo is due on its own interval", () => {
+  const now = at("2026-11-01")
+  const repos = [
+    { repo: "a/hourly", checkGithub: "hourly", lastGithub: now - 2 * 3600000, checkListing: "weekly", lastListing: now - DAY, pluginId: "io.a" },
+    { repo: "a/daily", checkGithub: "daily", lastGithub: now - 3600000, checkListing: "daily", lastListing: 0, pluginId: "" },
+  ]
+  assert.deepEqual(M.dueRepos(repos, "github", now), ["a/hourly"])
+  assert.deepEqual(M.dueRepos(repos, "listing", now), ["a/daily"])
+  assert.equal(M.nextDelay(repos, now, true), 0)
+  // Signed out: only listing checks count, and only for repos with a plugin id.
+  assert.equal(M.nextDelay(repos, now, false), 6 * DAY)
+  assert.equal(M.nextDelay([], now, true), -1)
+})
+
+test("new repos take the defaults; stored per-repo options are cleaned", () => {
+  const r = M.newRepo("a/b", 5, { checkGithub: "weekly", checkListing: "nonsense" })
+  assert.equal(r.checkGithub, "weekly")
+  assert.equal(r.checkListing, "daily")
+  assert.deepEqual(r.milestone, { on: true, metric: "clones", step: 100 })
+  const s = M.cleanState({ repos: [{ repo: "a/b", checkGithub: "hourly", milestone: { on: false, metric: "hearts", step: -4 },
+    seen: { copies: 3, evil: 1 }, missed: "<b>", lastGithub: 7 }] })
+  const c = s.repos[0]
+  assert.equal(c.checkGithub, "hourly")
+  assert.deepEqual(c.milestone, { on: false, metric: "hearts", step: 100 })
+  assert.deepEqual(c.seen, { copies: 3 })
+  assert.equal(c.missed, "")
+  assert.equal(c.lastGithub, 7)
+})
+
+test("the bar number: any stat, all repos or one", () => {
+  const today = "2026-11-01"
+  const repos = [
+    { repo: "a/one", clones: { days: { [today]: [5, 2] } }, views: { days: { [today]: [9, 4] } }, pluginId: "io.one",
+      market: { current: { views: 70, copies: 3, hearts: 1 }, snaps: {} } },
+    { repo: "a/two", clones: { days: { [today]: [1, 1] } }, views: null, market: null },
+  ]
+  assert.equal(M.barValue(repos, "all", "clones", today), 6)
+  assert.equal(M.barValue(repos, "a/one", "views", today), 9)
+  assert.equal(M.barValue(repos, "a/two", "listingViews", today), 0)
+  assert.equal(M.barValue(repos, "a/gone", "clones", today), 6, "a removed repo falls back to all")
+})
+
+test("milestones: per repo and combined, first sight silent, combined can be off", () => {
+  const today = "2026-11-01"
+  const repo = (name, clones, milestone, seen) => ({ repo: name, clones: { days: { [today]: [clones, 1] } }, milestone, seen })
+  const repos = [
+    repo("a/one", 250, { on: true, metric: "clones", step: 100 }, { clones: 1 }),
+    repo("a/two", 40, { on: true, metric: "clones", step: 10 }, {}),
+    repo("a/off", 999, { on: false, metric: "clones", step: 1 }, { clones: 0 }),
+  ]
+  const r = M.milestoneCheck(repos, { on: true, metric: "clones", step: 1000 }, { clones: 0 }, today)
+  assert.deepEqual(r.celebrations, [{ repo: "a/one", metric: "clones", value: 200 }, { repo: "", metric: "clones", value: 1000 }])
+  assert.deepEqual(r.seen, { "a/one": { clones: 2 }, "a/two": { clones: 4 }, "": { clones: 1 } })
+  const off = M.milestoneCheck(repos, { on: false, metric: "clones", step: 1000 }, { clones: 0 }, today)
+  assert.ok(!off.celebrations.some((c) => c.repo === ""), "combined off: no combined milestone")
 })

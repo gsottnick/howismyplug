@@ -14,11 +14,12 @@ PAT = "github_pat_11TESTONLY0123456789_abcdefghijklmnop"
 PAT2 = "github_pat_22TESTONLY9876543210_zyxwvutsrqponmlkj"
 
 
-def day_series(kind, days):
-    """days: {"2026-10-30": (count, uniques)} -> GitHub's response shape."""
+def day_series(kind, days, uniques=None):
+    """days: {"2026-10-30": (count, uniques)} -> GitHub's response shape. The
+    14-day unique count defaults to the busiest day's (a valid lower bound)."""
     return {
         "count": sum(c for c, _ in days.values()),
-        "uniques": max([u for _, u in days.values()] or [0]),
+        "uniques": uniques if uniques is not None else max([u for _, u in days.values()] or [0]),
         kind: [{"timestamp": d + "T00:00:00Z", "count": c, "uniques": u} for d, (c, u) in sorted(days.items())],
     }
 
@@ -120,7 +121,7 @@ class Fake:
                     if not repo.get("access", True):
                         return self.send(403, {"message": "Resource not accessible by integration"})
                     kind = rest.split("/")[1]
-                    return self.send(200, repo.get(kind + "_raw") or day_series(kind, repo.get(kind, {})))
+                    return self.send(200, repo.get(kind + "_raw") or day_series(kind, repo.get(kind, {}), repo.get(kind + "_uniques")))
                 self.send(404, {"message": "Not Found"})
 
         return Handler

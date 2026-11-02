@@ -198,8 +198,9 @@ class PanelTest(unittest.TestCase):
         self.assertEqual(h.keyring_secret(), fake_github.PAT)
         repo = s["state"]["repos"][0]
         self.assertEqual(repo["access"], "ok")
-        self.assertEqual(s["view"]["totals"]["clones"], {"count": 18, "uniques": 9})
-        self.assertEqual(s["view"]["totals"]["views"], {"count": 35, "uniques": 6})
+        # Counts add up by day; unique people are GitHub's own 14-day count (the fake reports the busiest day's).
+        self.assertEqual(s["view"]["totals"]["clones"], {"count": 18, "uniques": 4})
+        self.assertEqual(s["view"]["totals"]["views"], {"count": 35, "uniques": 5})
         self.assertEqual(s["panel"]["barText"], "18")
         self.assert_token_stays_private(h, fake_github.PAT)
 
@@ -269,7 +270,7 @@ class PanelTest(unittest.TestCase):
     def test_the_copy_button_copies_the_sign_in_code(self):
         self.fake.pending_polls = 99
         h = self.harness()
-        s = h.run(["sign-in", "wait:300", "click:copyCodeButton"])
+        s = h.run(["sign-in", "wait:300", "click:overviewSignIn-copyCode"])
         copied = [p["stdin"] for p in s["piped"] if p["command"] == ["wl-copy"]]
         self.assertEqual(copied, ["ABCD-1234", "ABCD-1234"], "copied on sign-in and again on click")
         self.assertTrue(s["view"]["codeCopied"])
@@ -290,7 +291,7 @@ class PanelTest(unittest.TestCase):
         self.fake.repos["octo/private"] = {"manifest": None, "access": False}
         h = self.harness()
         h.sign_in_with_keyring()
-        s = h.run(["track:octo/private", "wait:1200", "open", "click:giveAccess-octo/private"])
+        s = h.run(["track:octo/private", "wait:1200", "open-repo:octo/private", "click:giveAccessButton"])
         repo = s["state"]["repos"][0]
         self.assertEqual(repo["access"], "denied")
         self.assertTrue(repo["idChecked"])
@@ -306,7 +307,7 @@ class PanelTest(unittest.TestCase):
         clones = s["state"]["repos"][0]["clones"]
         self.assertEqual(clones["days"][day(-30)], [100, 20], "days GitHub forgot are kept")
         self.assertEqual(clones["days"][day(-1)], [6, 3], "the larger reading wins")
-        self.assertEqual(s["panel"]["allTime"]["clones"]["count"], 100 + 10 + 6 + 2)
+        self.assertEqual(s["view"]["totals"]["clones"]["count"], 100 + 10 + 6 + 2)
 
     def test_junk_from_the_server_is_ignored(self):
         self.fake.repos["octo/plug"]["clones_raw"] = {"count": "lots", "clones": [{"timestamp": "<script>", "count": 5}, "x"]}
@@ -335,8 +336,10 @@ class PanelTest(unittest.TestCase):
         self.assertTrue(before["panel"]["disco"])
         shown = h.after(3)
         self.assertTrue(shown["view"]["cardVisible"])
-        self.assertEqual(shown["view"]["shownMilestone"], 200)
+        self.assertTrue(shown["view"]["confetti"], "confetti with animations on")
+        self.assertEqual(shown["view"]["shown"], {"repo": "", "metric": "clones", "value": 200}, "the combined milestone")
         self.assertEqual(s["state"]["seen"]["clones"], 2)
+        self.assertEqual(s["state"]["repos"][0]["seen"]["clones"], 2, "the repo's own milestone, first seen: recorded silently")
         self.assertFalse(s["panel"]["milestonePending"])
         self.assertFalse(s["view"]["cardVisible"], "not shown again")
 
@@ -345,6 +348,7 @@ class PanelTest(unittest.TestCase):
         h.seed({"repos": [{"repo": "octo/plug", "idChecked": True, "clones": {"days": {day(-40): [250, 30]}}}]})
         s = h.run(["wait:600"])
         self.assertEqual(s["state"]["seen"]["clones"], 2)
+        self.assertEqual(s["state"]["repos"][0]["seen"]["clones"], 2)
         self.assertFalse(s["view"]["cardVisible"])
 
     def test_animations_off_still_announces_milestones(self):
@@ -353,6 +357,86 @@ class PanelTest(unittest.TestCase):
         s = h.run(["wait:400"], settings={"animations": False})
         self.assertFalse(s["panel"]["disco"])
         self.assertTrue(s["view"]["cardVisible"])
+        self.assertFalse(s["view"]["confetti"], "no confetti with animations off")
+
+    def test_a_repo_celebrates_its_own_milestone_and_combined_can_be_off(self):
+        h = self.harness()
+        h.seed({"seen": {"clones": 0}, "repos": [
+            {"repo": "octo/plug", "idChecked": True, "milestone": {"on": True, "metric": "clones", "step": 50}, "seen": {"clones": 1},
+             "clones": {"days": {day(-40): [120, 30]}}}]})
+        s = h.run(["wait:400"], settings={"combinedMilestones": False})
+        self.assertTrue(s["view"]["cardVisible"])
+        self.assertEqual(s["view"]["shown"], {"repo": "octo/plug", "metric": "clones", "value": 100})
+        self.assertEqual(s["state"]["seen"]["clones"], 0, "combined off: its count is left alone")
+
+    def test_the_dropdown_never_grows_past_its_size(self):
+        heights = {}
+        for count, size in ((1, "normal"), (60, "normal"), (60, "compact"), (60, "tall")):
+            h = self.harness()
+            h.seed({"repos": [{"repo": f"octo/plug{i}", "idChecked": True} for i in range(count)]})
+            s = h.run(["wait:200"], settings={"panelSize": size})
+            heights[(count, size)] = s["panel"]["contentHeight"]
+        self.assertEqual(heights[(1, "normal")], heights[(60, "normal")], "sixty repos: same height, the list scrolls")
+        self.assertLess(heights[(60, "compact")], heights[(60, "normal")])
+        self.assertLess(heights[(60, "normal")], heights[(60, "tall")])
+
+    def test_each_repo_has_its_own_checks_and_milestones(self):
+        h = self.harness()
+        h.seed({"repos": [{"repo": "octo/plug", "pluginId": "io.github.octo.plug", "idChecked": True},
+                          {"repo": "octo/other", "idChecked": True}]})
+        s = h.run(["open-repo:octo/plug", "pick:repoCheckGithub=hourly", "pick:repoCheckListing=weekly",
+                   "click:repoMilestonesToggle", "click:repoMilestonesToggle", "choose:repoMilestoneMetric=hearts",
+                   "number:repoMilestoneStep=25"])
+        self.assertEqual(h.after(0)["view"]["page"], "repo")
+        plug, other = s["state"]["repos"]
+        self.assertEqual((plug["checkGithub"], plug["checkListing"]), ("hourly", "weekly"))
+        self.assertEqual(plug["milestone"], {"on": True, "metric": "hearts", "step": 25})
+        self.assertFalse(h.after(3)["state"]["repos"][0]["milestone"]["on"], "the toggle switched it off, then on")
+        self.assertEqual((other["checkGithub"], other["checkListing"]), ("daily", "daily"), "other repos untouched")
+        self.assertEqual(other["milestone"], {"on": True, "metric": "clones", "step": 100})
+
+    def test_new_repos_start_with_the_default_checks(self):
+        h = self.harness()
+        s = h.run(["page:settings", "pick:defaultCheckGithubChoice=weekly", "pick:defaultCheckListingChoice=hourly",
+                   "page:overview", "track:octo/plug", "wait:600"])
+        repo = s["state"]["repos"][0]
+        self.assertEqual((repo["checkGithub"], repo["checkListing"]), ("weekly", "hourly"))
+
+    def test_the_bar_number_can_be_any_stat_of_any_repo(self):
+        self.fake.repos["octo/other"] = {"manifest": {"id": "io.github.octo.other"}}
+        self.fake.market["io.github.octo.other"] = {"views": 5000, "copies": 9, "hearts": 4}
+        h = self.harness()
+        s = h.run(["track:octo/plug", "track:octo/other", "wait:1500", "page:settings",
+                   "choose:barSourceChoice=octo/plug", "choose:barStatChoice=listingViews"])
+        self.assertEqual(s["panel"]["barText"], "71")
+        self.assertEqual((s["barWrites"][-1]["barSource"], s["barWrites"][-1]["barStat"]), ("octo/plug", "listingViews"))
+        all_listing = h.after(2)["panel"]["barValue"]
+        self.assertEqual(all_listing, 0, "default stat is clones (signed out: none yet)")
+
+    def test_settings_page_saves_look_and_milestone_choices(self):
+        h = self.harness()
+        s = h.run(["page:settings", "pick:panelSizeChoice=tall", "pick:accentChoice=urgent", "pick:countModeChoice=unique",
+                   "click:animationsToggle", "click:showCombinedToggle", "click:combinedMilestonesToggle",
+                   "click:combinedMilestonesToggle", "choose:combinedMilestoneMetric=copies", "number:combinedMilestoneStep=10"])
+        last = s["barWrites"][-1]
+        self.assertEqual((last["panelSize"], last["accent"], last["countMode"]), ("tall", "urgent", "unique"))
+        self.assertEqual((last["animations"], last["showCombined"], last["combinedMilestones"]), (False, False, True))
+        self.assertEqual((last["milestoneMetric"], last["milestoneStep"]), ("copies", 10))
+
+    def test_help_page_links_go_where_the_steps_say(self):
+        h = self.harness()
+        s = h.run(["click:helpButton", "click:helpTokenPage", "click:helpGiveAccess", "click:backButton"])
+        self.assertEqual(h.after(0)["view"]["page"], "help")
+        self.assertIn("https://github.com/settings/personal-access-tokens/new", s["opened"])
+        self.assertIn("https://github.com/apps/howismyplug/installations/new", s["opened"])
+        self.assertEqual(s["view"]["page"], "overview")
+
+    def test_a_removed_repo_closes_its_page(self):
+        h = self.harness()
+        h.seed({"repos": [{"repo": "octo/plug", "idChecked": True}]})
+        s = h.run(["open-repo:octo/plug", "click:removeRepoButton"])
+        self.assertEqual(s["state"]["repos"], [])
+        self.assertEqual(s["view"]["page"], "overview")
 
 
 if __name__ == "__main__":

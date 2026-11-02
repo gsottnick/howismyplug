@@ -85,11 +85,10 @@ STORE_PROPS = (
     "authError",
     "polling",
     "pollError",
-    "missed",
     "pollEvery",
 )
 PANEL_PROPS = ("width", "height", "opened", "period", "countMode", "barStat", "barText", "barValue", "milestonePending", "disco", "animations")
-VIEW_PROPS = ("codeCopied", "repoError", "tokenError", "tokenMode", "shownMilestone", "shownMetric", "cardOpacity", "editing")
+VIEW_PROPS = ("page", "currentRepo", "shown", "codeCopied", "repoError", "tokenError", "tokenMode", "cardOpacity", "editing")
 
 # URLs the plugin asked the desktop to open, recorded instead of opened.
 OPENED: list[str] = []
@@ -113,11 +112,12 @@ def snapshot(plugin: QObject, store: QObject) -> dict:
     state = {name: read(store, name) for name in STORE_PROPS}
     state["state"] = read(store, "state", {})
     state["panel"] = {name: read(plugin, name) for name in PANEL_PROPS}
-    state["panel"]["allTime"] = read(plugin, "allTime", {})
     state["panel"]["settings"] = read(plugin, "settings", {})
     view = plugin.findChild(QObject, "plugView")
     state["view"] = {name: read(view, name) for name in VIEW_PROPS} if view else {}
     state["view"]["totals"] = read(view, "totals", {}) if view else {}
+    confetti = plugin.findChild(QObject, "confetti")
+    state["view"]["confetti"] = bool(confetti and confetti.property("running"))
     card = plugin.findChild(QObject, "milestoneCard")
     state["view"]["cardVisible"] = bool(card and card.property("visible"))
     keyboard = plugin.findChild(QObject, "keyboardPanel")
@@ -181,18 +181,30 @@ def apply_step(step: str, plugin: QObject, store: QObject, harness=None):
     if name in simple:
         invoke(*simple[name])
     elif name == "track":
-        plugin.findChild(QObject, "repoField").setProperty("text", argument)
+        find(plugin, "repoField").setProperty("text", argument)
         evaluate(view, "addRepo()")
     elif name == "untrack":
         invoke(store, "removeRepo", argument)
     elif name == "token":
         view.setProperty("tokenMode", True)
-        plugin.findChild(QObject, "tokenField").setProperty("text", argument)
-        evaluate(view, "saveToken()")
-    elif name == "period":
-        QMetaObject.invokeMethod(
-            plugin.findChild(QObject, "periodGroup"), "changed", Q_ARG("QString", argument)
-        )
+        field = find(plugin, "overviewSignIn-tokenField")
+        field.setProperty("text", argument)
+        QMetaObject.invokeMethod(field, "accepted")
+    elif name == "open-repo":
+        evaluate(view, "openRepo(" + json.dumps(argument) + ")")
+    elif name == "page":
+        evaluate(view, "go(" + json.dumps(argument) + ")")
+    elif name in ("period", "pick"):
+        # A ButtonGroup choice, as if clicked: pick:<ChoiceRow objectName>=<value>
+        control, _, value = ("periodChoice", "", argument) if name == "period" else argument.partition("=")
+        QMetaObject.invokeMethod(find(plugin, control + "Group"), "changed", Q_ARG("QString", value))
+    elif name == "choose":
+        # A Dropdown choice: choose:<objectName>=<value>
+        control, _, value = argument.partition("=")
+        QMetaObject.invokeMethod(find(plugin, control), "changed", Q_ARG("QString", value))
+    elif name == "number":
+        control, _, value = argument.partition("=")
+        QMetaObject.invokeMethod(find(plugin, control), "modified", Q_ARG(int, int(value)))
     elif name == "click":
         QMetaObject.invokeMethod(find(plugin, argument), "clicked")
     elif name == "wait":
