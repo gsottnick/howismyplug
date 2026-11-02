@@ -296,15 +296,33 @@ Singleton {
     root._token = token
     root.authError = ""
     var s = copyState(); s.authMethod = method; commit(s)
-    keyStore.pending = token
-    if (!keyStore.running) { keyStore.stdinEnabled = true; keyStore.running = true }
+    root._keyPending = token
+    root._clearQueued = false
+    keyringNext()
     for (var i = 0; i < state.repos.length; i++) pollRepo(state.repos[i].repo)
   }
 
   function signOut() {
     cancelSignIn()
     root._token = ""
-    keyClear.running = true
+    root._keyPending = ""
+    root._clearQueued = true
+    keyringNext()
+  }
+
+  // Keyring writes run one at a time, newest wish last: a token saved or a
+  // sign-out while secret-tool is still busy waits for it instead of racing it.
+  property bool _clearQueued: false
+  property string _keyPending: ""
+  function keyringNext() {
+    if (keyStore.running || keyClear.running) return
+    if (root._clearQueued) {
+      root._clearQueued = false
+      keyClear.running = true
+    } else if (root._keyPending !== "") {
+      keyStore.stdinEnabled = true
+      keyStore.running = true
+    }
   }
 
   function copy(value) {
@@ -334,21 +352,22 @@ Singleton {
 
   Process {
     id: keyStore
-    property string pending: ""
     command: ["secret-tool", "store", "--label=HowIsMyPlug? GitHub sign-in", "service", root.keyService, "account", "github"]
     onStarted: {
-      write(pending)
-      pending = ""
+      write(root._keyPending)
+      root._keyPending = ""
       stdinEnabled = false
     }
     onExited: function(code) {
       if (code !== 0) root.authError = "Couldn't save the sign-in to the keyring. It works until you log out."
+      root.keyringNext()
     }
   }
 
   Process {
     id: keyClear
     command: ["secret-tool", "clear", "service", root.keyService, "account", "github"]
+    onExited: root.keyringNext()
   }
 
   property string _clip: ""

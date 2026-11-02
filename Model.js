@@ -243,11 +243,16 @@ function metricValue(totals, metric) {
 // Every tracked repo added up for one period.
 function totalsFor(repos, period, today) {
   var t = { clones: { count: 0, uniques: 0 }, views: { count: 0, uniques: 0 }, market: { views: 0, copies: 0, hearts: 0 } }
+  var listings = {}
   for (var i = 0; i < repos.length; i++) {
     var r = repos[i]
-    var c = trafficFor(r.clones, period, today), v = trafficFor(r.views, period, today), m = marketFor(r.market, period, today)
+    var c = trafficFor(r.clones, period, today), v = trafficFor(r.views, period, today)
     t.clones.count += c.count; t.clones.uniques += c.uniques
     t.views.count += v.count; t.views.uniques += v.uniques
+    // A fork tracked next to its original shares one listing: count it once.
+    if (r.pluginId && listings[r.pluginId]) continue
+    if (r.pluginId) listings[r.pluginId] = true
+    var m = marketFor(r.market, period, today)
     t.market.views += m.views; t.market.copies += m.copies; t.market.hearts += m.hearts
   }
   return t

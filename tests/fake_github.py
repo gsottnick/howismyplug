@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 TOKEN = "ghu_testtoken0123456789abcdefABCDEF"
 PAT = "github_pat_11TESTONLY0123456789_abcdefghijklmnop"
+PAT2 = "github_pat_22TESTONLY9876543210_zyxwvutsrqponmlkj"
 
 
 def day_series(kind, days):
@@ -28,7 +29,7 @@ class Fake:
         self.requests = []     # (method, path, authorization header)
         self.token_polls = 0
         self.pending_polls = 0  # how many polls answer "authorization_pending" first
-        self.valid_tokens = {TOKEN, PAT}
+        self.valid_tokens = {TOKEN, PAT, PAT2}
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 

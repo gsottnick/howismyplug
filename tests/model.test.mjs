@@ -148,6 +148,15 @@ test("totals across repos and the bar metric", () => {
   assert.equal(M.metricValue(t, "uniqueViews"), 3)
   assert.equal(M.metricValue(t, "copies"), 1)
   assert.equal(M.metricValue(t, "nonsense"), 6)
+
+  // A fork with the same plugin id: its traffic counts, the shared listing doesn't count twice.
+  const listing = { current: { views: 4, copies: 1, hearts: 1 }, snaps: {} }
+  const forked = M.totalsFor([
+    { pluginId: "io.x.plug", clones: { days: { [today]: [5, 2] } }, market: listing },
+    { pluginId: "io.x.plug", clones: { days: { [today]: [3, 1] } }, market: listing },
+  ], "all", today)
+  assert.equal(forked.clones.count, 8)
+  assert.deepEqual(forked.market, { views: 4, copies: 1, hearts: 1 })
 })
 
 test("milestones: silent first run, one celebration for the newest", () => {

@@ -201,6 +201,19 @@ class PanelTest(unittest.TestCase):
         self.assertEqual(s["panel"]["barText"], "18")
         self.assert_token_stays_private(h, fake_github.PAT)
 
+    def test_a_second_token_saved_mid_write_is_the_one_kept(self):
+        h = self.harness()
+        s = h.run(["token:" + fake_github.PAT, "token:" + fake_github.PAT2, "wait:1500"], step_delay=50)
+        self.assertEqual(h.keyring_secret(), fake_github.PAT2)
+        self.assertTrue(s["signedIn"])
+        self.assert_token_stays_private(h, fake_github.PAT2)
+
+    def test_signing_out_mid_write_leaves_the_keyring_empty(self):
+        h = self.harness()
+        s = h.run(["token:" + fake_github.PAT, "sign-out", "wait:1500"], step_delay=50)
+        self.assertFalse(s["signedIn"])
+        self.assertIsNone(h.keyring_secret())
+
     def test_a_bad_token_is_refused_before_it_is_stored(self):
         h = self.harness()
         s = h.run(["token:not a token!"])

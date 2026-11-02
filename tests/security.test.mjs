@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url"
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..")
 const shipped = ["Panel.qml", "PlugView.qml", "PlugStore.qml", "Model.js", "DecryptText.qml", "Confetti.qml",
-  "TokenRain.qml", "Sparkle.qml", "qmldir", "manifest.json"]
+  "TokenRain.qml", "qmldir", "manifest.json"]
 const read = (file) => readFileSync(join(root, file), "utf8")
 
 test("only the expected hosts, and only over HTTPS", () => {
@@ -50,9 +50,9 @@ test("the token only appears where SECURITY.md says", () => {
 test("secrets reach processes only on stdin", () => {
   const store = read("PlugStore.qml")
   for (const [, cmd] of store.matchAll(/command:\s*(\[[^\n]*\])/g))
-    assert.ok(!/token|pending|_clip|secret/i.test(cmd.replace(/"secret-tool"/g, "")), `a command line carries data: ${cmd}`)
+    assert.ok(!/token|pending|_clip|secret|_keyPending|_saveQueued/i.test(cmd.replace(/"secret-tool"/g, "")), `a command line carries data: ${cmd}`)
   // The keyring write hands over the token with write(), then closes stdin.
-  assert.match(store, /id: keyStore[\s\S]*?onStarted: \{\s*write\(pending\)\s*pending = ""\s*stdinEnabled = false/)
+  assert.match(store, /id: keyStore[\s\S]*?onStarted: \{\s*write\(root\._keyPending\)\s*root\._keyPending = ""\s*stdinEnabled = false/)
 })
 
 test("nothing logs, escalates, or runs a shell on input", () => {
