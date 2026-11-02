@@ -162,6 +162,8 @@ class PanelTest(unittest.TestCase):
         self.assertTrue(s["keyringChecked"])
         self.assertFalse(s["signedIn"])
         self.assertEqual(s["panel"]["barText"], "")
+        self.assertGreater(s["panel"]["width"], 0, "the widget takes space in the bar")
+        self.assertGreater(s["panel"]["height"], 0)
         self.assertEqual(s["state"]["repos"], [])
         # Nothing tracked: no web requests at all.
         self.assertEqual(self.fake.requests, [])

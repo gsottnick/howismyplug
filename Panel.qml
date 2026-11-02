@@ -12,6 +12,9 @@ Panel {
   moduleName: "io.github.gsottnick.howismyplug"
   ipcTarget: "io.github.gsottnick.howismyplug"
 
+  implicitWidth: button.implicitWidth
+  implicitHeight: button.implicitHeight
+
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 

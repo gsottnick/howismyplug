@@ -88,7 +88,7 @@ STORE_PROPS = (
     "missed",
     "pollEvery",
 )
-PANEL_PROPS = ("opened", "period", "countMode", "barStat", "barText", "barValue", "milestonePending", "disco", "animations")
+PANEL_PROPS = ("width", "height", "opened", "period", "countMode", "barStat", "barText", "barValue", "milestonePending", "disco", "animations")
 VIEW_PROPS = ("repoError", "tokenError", "tokenMode", "shownMilestone", "shownMetric", "cardOpacity", "editing")
 
 # URLs the plugin asked the desktop to open, recorded instead of opened.
