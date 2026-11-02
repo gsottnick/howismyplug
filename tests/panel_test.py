@@ -23,6 +23,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -403,6 +404,21 @@ class PanelTest(unittest.TestCase):
         self.assertFalse(h.after(3)["state"]["repos"][0]["milestone"]["on"], "the toggle switched it off, then on")
         self.assertEqual((other["checkGithub"], other["checkListing"]), ("daily", "daily"), "other repos untouched")
         self.assertEqual(other["milestone"], {"on": True, "metric": "clones", "step": 100})
+
+    def test_changing_a_repos_schedule_checks_right_away(self):
+        h = self.harness()
+        h.sign_in_with_keyring()
+        now = int(time.time() * 1000)   # just checked: nothing is due on its own
+        h.seed({"repos": [{"repo": "octo/plug", "pluginId": "io.github.octo.plug", "idChecked": True,
+                           "lastGithub": now, "lastListing": now}]})
+        s = h.run(["wait:600", "open-repo:octo/plug", "pick:repoCheckGithub=twodays", "wait:600",
+                   "pick:repoCheckListing=weekly", "wait:600"])
+        traffic = [p for _, p, _ in self.fake.requests if p.endswith("/traffic/clones")]
+        stats = [p for _, p, _ in self.fake.requests if p == "/market/v1/stats"]
+        self.assertEqual(len(traffic), 1, "one GitHub check, from the schedule change")
+        self.assertEqual(len(stats), 1, "one listing check, from the schedule change")
+        self.assertEqual(s["state"]["repos"][0]["checkGithub"], "twodays")
+        self.assertEqual(s["state"]["repos"][0]["checkListing"], "weekly")
 
     def test_new_repos_start_with_the_default_checks(self):
         h = self.harness()

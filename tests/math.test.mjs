@@ -111,7 +111,7 @@ function expectedCount(truth, series, lastT) {
   return total
 }
 
-for (const every of ["hourly", "daily", "weekly", "biweekly"]) {
+for (const every of ["hourly", "daily", "twodays", "weekly", "biweekly"]) {
   for (const lag of [0, 1, 2]) {
     test(`${every} checks, GitHub ${lag} day(s) behind: counts and lifetime unique add up exactly`, () => {
       const truth = makeTruth(every.length * 10 + lag)
@@ -145,6 +145,19 @@ test("Gavin's example: 100 when installed, then 20 more people over the next day
   assert.equal(values[0], 100)
   assert.equal(values[values.length - 1], 120)
   for (let i = 1; i < values.length; i++) assert.ok(values[i] >= values[i - 1])
+})
+
+test("computer off for two days: the next check fills in both days by their dates", () => {
+  const truth = makeTruth(77)
+  const t1 = START + 40 * DAY + 20 * HOUR, t2 = START + 43 * DAY + 9 * HOUR   // off on days 41 and 42
+  let series = M.recordTraffic(null, M.parseTraffic(githubAt(truth, t1), "clones"), t1)
+  assert.equal(series.days[truth[41].key], undefined)
+  series = M.recordTraffic(series, M.parseTraffic(githubAt(truth, t2), "clones"), t2)
+  for (const d of [40, 41, 42]) {
+    assert.equal(series.days[truth[d].key][0], truth[d].hours.flat().length, `day ${d} count`)
+    assert.equal(series.days[truth[d].key][1], people(truth[d].hours.flat()), `day ${d} unique`)
+  }
+  assert.equal(M.uniquesFor(series, "all", truth[43].key), expectedLifetime(truth, series, t2))
 })
 
 test("computer off for days at a time: nothing lost while every gap is under 14 days", () => {

@@ -185,6 +185,8 @@ test("poll schedule and missed days", () => {
   assert.equal(M.pollDelay(now - 2 * DAY, "daily", now), 0)
   assert.equal(M.pollDelay(now + DAY, "hourly", now), 0, "a clock that went backwards polls now")
   assert.equal(M.pollEveryMs("biweekly"), 13 * DAY)
+  assert.equal(M.pollEveryMs("twodays"), 2 * DAY)
+  assert.equal(M.cleanCheck("twodays"), "twodays")
   assert.equal(M.pollEveryMs("bogus"), DAY)
 
   assert.equal(M.missedRange(0, now), "")

@@ -37,7 +37,7 @@ Everything is in the dropdown. **⚙** opens the settings, **?** the help, and e
 opens its own page.
 
 **Each repo** (tap it in the list): its own numbers for the chosen period, how often to check GitHub
-traffic and the listing (hourly, daily, weekly, every 2 weeks), its own milestones (on/off, which stat,
+traffic and the listing (every hour, day, 2 days, week or 2 weeks; changing it checks right away), its own milestones (on/off, which stat,
 every how many), and links to the repo and its listing.
 
 **Settings page**:
@@ -67,6 +67,8 @@ same settings also appear in Omarchy's widget settings.
   "14 days" shows GitHub's own number, the same as its traffic page. GitHub's window rolls (a day in, a
   day out) and every day is saved before it drops out. `tests/math.test.mjs` proves this against
   simulated traffic on every schedule.
+- **Computer off?** Every number is stored under its date. The next check fills in the days that were
+  missed, as long as it happens within 14 days.
 - **Gaps**: if the computer is off (or the shell isn't running) for more than 14 days, the days
   GitHub dropped in between are gone. The dropdown says which ones.
 - **Marketplace numbers** are the marketplace's own lifetime counts; periods show the growth
@@ -90,21 +92,35 @@ Where things live:
 
 To start over: Sign out in the dropdown, then delete `~/.local/state/howismyplug`.
 
-## Development
+## Requirements
+
+Nothing to install beyond Omarchy itself. The plugin uses what Omarchy ships:
+
+- Omarchy's shell (Quickshell) to run and to talk to GitHub and the marketplace
+- `secret-tool` (libsecret) and GNOME Keyring to keep your GitHub sign-in
+- `wl-copy` (wl-clipboard) to copy the sign-in code
+
+It talks to `api.github.com` and `github.com` (your traffic, sign-in) and `api.omarchyplugins.com`
+(public listing stats). Signing in uses the **HowIsMyPlug** GitHub app, which can only read traffic on the
+repos you choose. See [SECURITY.md](SECURITY.md).
+
+## Remove
 
 ```bash
-node --test 'tests/*.test.mjs'           # logic + security rules
-python3 -m venv .venv-harness && .venv-harness/bin/pip install 'PySide6>=6.10,<6.12'
-cd tests && ../.venv-harness/bin/python -m unittest panel_test -v   # the real panel, fake GitHub
-omarchy plugin validate .
+omarchy plugin remove io.github.gsottnick.howismyplug
 ```
 
-The panel tests load Omarchy's shell components from `/usr/share/omarchy/shell`; if your Omarchy is
-newer than the version CI pins (`OMARCHY_REF` in `.github/workflows/tests.yml`), point
-`OMARCHY_SHELL` at a checkout of that version's `shell/` folder.
-The panel tests run the real QML against a local fake of GitHub and the marketplace and a fake
-`secret-tool`, so they never touch your account or keyring. `tools/preview/make-preview.py`
-rebuilds `preview.png`.
+That removes the plugin and its bar entry. To also remove what it saved:
+
+1. Before removing, open the dropdown, then ⚙ and **Sign out** (deletes the sign-in from your keyring), or
+   afterwards: `secret-tool clear service io.github.gsottnick.howismyplug account github`
+2. Delete the saved history: `rm -r ~/.local/state/howismyplug`
+3. Optionally revoke the app on GitHub: Settings → Applications → Authorized GitHub Apps → HowIsMyPlug
+   (and Installed GitHub Apps → HowIsMyPlug → Uninstall).
+
+## Contributing
+
+Tests, the preview image and how changes are made: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
