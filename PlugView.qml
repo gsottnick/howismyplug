@@ -114,8 +114,14 @@ Item {
   // ── reveal + milestones ─────────────────────────────────────────────
   // Called each time the dropdown opens / closes.
   function reveal() {
-    if (root.anim) tiles.play()
+    replay()
     Qt.callLater(checkMilestones)
+  }
+  // The numbers' reveal animation, on opening and on the refresh button.
+  property int reveals: 0
+  function replay() {
+    reveals++
+    if (root.anim) tiles.play()
   }
   function reset() {
     celebrateAnim.stop()
@@ -199,7 +205,7 @@ Item {
         foreground: root.fg
         fontFamily: root.ff
         enabled: !PlugStore.polling
-        onClicked: PlugStore.pollNow()
+        onClicked: { PlugStore.pollNow(); root.replay() }
       }
       PanelActionButton {
         objectName: "settingsButton"

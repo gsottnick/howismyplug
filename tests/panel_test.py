@@ -440,6 +440,14 @@ class PanelTest(unittest.TestCase):
         self.assertIn("https://github.com/apps/howismyplug/installations/new", s["opened"])
         self.assertEqual(s["view"]["page"], "overview")
 
+    def test_the_refresh_button_checks_now_and_replays_the_numbers(self):
+        h = self.harness()
+        h.seed({"repos": [{"repo": "octo/plug", "pluginId": "io.github.octo.plug", "idChecked": True}]})
+        s = h.run(["wait:300", "click:refreshButton", "wait:800"])
+        self.assertEqual(s["view"]["reveals"], h.after(0)["view"]["reveals"] + 1, "replayed without reopening")
+        self.assertTrue(s["panel"]["opened"])
+        self.assertTrue(any(path == "/market/v1/stats" for _, path, _ in self.fake.requests), "and checked")
+
     def test_a_removed_repo_closes_its_page(self):
         h = self.harness()
         h.seed({"repos": [{"repo": "octo/plug", "idChecked": True}]})
