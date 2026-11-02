@@ -20,6 +20,9 @@ Plan: `~/.claude/plans/can-we-make-an-melodic-wind.md`. Work on branch `first-bu
       round 1 found a possible double count of returners in finished blocks -> fixed (no correction,
       23:55 UTC boundary check, per-block exactness tests); round 2 found a duplicated objectName -> fixed;
       round 3 at 452f4b6: "Nothing else left to change."
+- [x] Gavin changed the unique rule (2026-11-02): lifetime = GitHub's 14-day number at the first check
+      + each later day's unique number; 14 days = GitHub's own number. Blocks removed (fb45a0a).
+      GLM review of the new rule: one dead constant, removed (c815453); "nothing further to suggest".
 - [ ] Gavin: look at preview.png and the new pages, merge PR #2
 - [ ] Live check of 0.2.0 in Gavin's bar (needs his OK for a shell restart): compact/tall with many repos
 - [x] Live test in Gavin's bar (2026-11-01): signed in via the app, omatuple matches GitHub (551/152 clones,
