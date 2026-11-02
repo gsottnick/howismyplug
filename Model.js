@@ -11,7 +11,6 @@ var GITHUB_WINDOW_DAYS = 14
 // Bi-weekly is 13 days: GitHub's 14-day window includes today, so a full
 // 14-day gap would lose the end of one day.
 var POLL_MS = { hourly: 3600000, daily: DAY_MS, weekly: 7 * DAY_MS, biweekly: 13 * DAY_MS }
-var MARKET_MIN_MS = 3600000
 
 var METRICS = ["clones", "uniqueClones", "views", "uniqueViews", "listingViews", "copies", "hearts"]
 var METRIC_LABELS = {
@@ -188,13 +187,62 @@ function sumDays(days, start) {
   return { count: count, uniques: uniques }
 }
 
-// Clones or views for a period. Unique is the sum of daily uniques (all GitHub
-// offers), except 14d, where GitHub's own 14-day unique count is exact.
+// Clones or views for a period. Counts add up day by day (each day stored
+// once). Unique people don't add up across days, so they come from GitHub's
+// exact 14-day counts (see uniquesFor).
 function trafficFor(series, period, today) {
   if (!series) return { count: 0, uniques: 0, exactUniques: false }
+  // "14 days" is GitHub's own window (it can end a day or two before today),
+  // so both numbers match its traffic page exactly.
+  if (period === "14d" && series.last14) return { count: series.last14.count, uniques: series.last14.uniques, exactUniques: true }
   var s = sumDays(series.days || {}, periodStart(period, today))
-  var exact = period === "14d" && series.last14 && series.last14Day === today
-  return { count: s.count, uniques: exact ? series.last14.uniques : s.uniques, exactUniques: !!exact }
+  return { count: s.count, uniques: uniquesFor(series, period, today), exactUniques: period === "14d" }
+}
+
+// ── unique people over time ───────────────────────────────────────────
+// GitHub shows unique cloners (or visitors) per day, and for its latest 14
+// days as a whole. Lifetime unique = GitHub's 14-day number from the first
+// check, plus each later day's unique number. GitHub's window rolls (a day
+// in, a day out), and every day is stored before it drops out, so nothing is
+// lost unless no check happens for more than 14 days.
+
+function dayIndex(day) { return Math.round(Date.parse(day + "T00:00:00Z") / DAY_MS) }
+function dayFromIndex(i) { return dayKey(i * DAY_MS) }
+
+function uniquesFor(series, period, today) {
+  if (!series || !series.last14) return 0
+  if (period === "14d") return series.last14.uniques       // exactly GitHub's "in last 14 days"
+  var first = series.first
+  var start = periodStart(period, today)
+  var firstStart = first ? dayFromIndex(dayIndex(first.end) - 13) : ""
+  var total = 0, inFirst = 0
+  for (var d in series.days) {
+    if (start && d < start) continue
+    if (first && d <= first.end) inFirst += series.days[d][1]
+    else total += series.days[d][1]
+  }
+  // The first 14 days count as GitHub's own number for them; a period that
+  // only covers part of them can't count more than that.
+  if (first) total += !start || start <= firstStart ? first.uniques : Math.min(inFirst, first.uniques)
+  return total
+}
+
+// Store one GitHub traffic answer (parseTraffic's result) in a series.
+function recordTraffic(series, t, now) {
+  var old = series || { days: {} }
+  var keys = Object.keys(t.days).sort()
+  var out = { days: mergeDays(old.days || {}, t.days), last14: old.last14 || null, first: old.first || null }
+  if (keys.length === 0) return out
+  var end = keys[keys.length - 1]
+  out.last14 = { count: t.count, uniques: t.uniques, end: end }
+  // The window seen at the first check is where lifetime counting starts.
+  // A later reading of that same window (its last day still growing) is more
+  // complete. If GitHub steps back to an earlier window (its first answer for
+  // a new repo can run ahead with nothing counted yet), that settled window is
+  // the real start; the days after it are added one by one like any others.
+  if (!out.first || end < out.first.end || (end === out.first.end && t.uniques > out.first.uniques))
+    out.first = { uniques: t.uniques, end: end }
+  return out
 }
 
 // Marketplace counts are lifetime. A period shows the growth since the last
@@ -294,22 +342,28 @@ function missedRange(lastPoll, now) {
   return from === to ? from : from + " – " + to
 }
 
+
 // ── state file ────────────────────────────────────────────────────────
 
 function cleanSeries(s) {
   if (!isObject(s)) return null
-  var days = {}
+  var days = {}, k
   if (isObject(s.days)) {
-    for (var k in s.days) {
+    for (k in s.days) {
       var v = s.days[k]
       if (isoDay(k + "T") && Array.isArray(v)) days[k] = [safeCount(v[0]), safeCount(v[1])]
     }
   }
-  var out = { days: days }
-  if (isObject(s.last14) && isoDay(text(s.last14Day) + "T")) {
-    out.last14 = { count: safeCount(s.last14.count), uniques: safeCount(s.last14.uniques) }
-    out.last14Day = s.last14Day
+  var keys = Object.keys(days).sort()
+  var out = { days: days, last14: null, first: null }
+  if (isObject(s.last14)) {
+    // Older files kept the check's date instead of the window's last day.
+    var end = isoDay(text(s.last14.end) + "T") ? s.last14.end : (keys.length ? keys[keys.length - 1] : "")
+    if (end) out.last14 = { count: safeCount(s.last14.count), uniques: safeCount(s.last14.uniques), end: end }
   }
+  if (isObject(s.first) && isoDay(text(s.first.end) + "T")) out.first = { uniques: safeCount(s.first.uniques), end: s.first.end }
+  // Files from before: lifetime counting starts from the latest 14-day number they kept.
+  else if (out.last14) out.first = { uniques: out.last14.uniques, end: out.last14.end }
   return out
 }
 
@@ -325,9 +379,35 @@ function cleanMarket(m) {
 }
 
 var ACCESS = ["", "ok", "denied", "missing"]
+var CHECKS = ["hourly", "daily", "weekly", "biweekly"]
 
-function newRepo(repo, now) {
-  return { repo: repo, addedAt: now, pluginId: "", idChecked: false, access: "", clones: null, views: null, market: null }
+function cleanCheck(v, fallback) {
+  return CHECKS.indexOf(v) >= 0 ? v : (CHECKS.indexOf(fallback) >= 0 ? fallback : "daily")
+}
+
+function cleanMilestone(m) {
+  m = isObject(m) ? m : {}
+  return {
+    on: m.on !== false,
+    metric: METRICS.indexOf(m.metric) >= 0 ? m.metric : "clones",
+    step: Math.max(1, Math.min(1000000, safeCount(m.step) || 100))
+  }
+}
+
+function cleanSeen(s) {
+  var out = {}
+  if (isObject(s)) for (var m in s) if (METRICS.indexOf(m) >= 0) out[m] = safeCount(s[m])
+  return out
+}
+
+// defaults: { checkGithub, checkListing } for a newly added repo.
+function newRepo(repo, now, defaults) {
+  var d = defaults || {}
+  return {
+    repo: repo, addedAt: now, pluginId: "", idChecked: false, access: "", clones: null, views: null, market: null,
+    checkGithub: cleanCheck(d.checkGithub), checkListing: cleanCheck(d.checkListing),
+    lastGithub: 0, lastListing: 0, missed: "", milestone: cleanMilestone(null), seen: {}
+  }
 }
 
 function cleanState(raw) {
@@ -337,7 +417,7 @@ function cleanState(raw) {
   out.lastPoll = safeCount(p.lastPoll)
   out.lastMarket = safeCount(p.lastMarket)
   if (p.authMethod === "token") out.authMethod = "token"
-  if (isObject(p.seen)) for (var m in p.seen) if (METRICS.indexOf(m) >= 0) out.seen[m] = safeCount(p.seen[m])
+  out.seen = cleanSeen(p.seen)
   var list = Array.isArray(p.repos) ? p.repos : [], have = {}
   for (var i = 0; i < list.length && out.repos.length < 100; i++) {
     var r = list[i]
@@ -349,10 +429,72 @@ function cleanState(raw) {
       pluginId: validPluginId(r.pluginId) ? String(r.pluginId) : "",
       idChecked: r.idChecked === true,
       access: ACCESS.indexOf(r.access) >= 0 ? r.access : "",
-      clones: cleanSeries(r.clones), views: cleanSeries(r.views), market: cleanMarket(r.market)
+      clones: cleanSeries(r.clones), views: cleanSeries(r.views), market: cleanMarket(r.market),
+      checkGithub: cleanCheck(r.checkGithub), checkListing: cleanCheck(r.checkListing),
+      lastGithub: safeCount(r.lastGithub), lastListing: safeCount(r.lastListing),
+      missed: /^\d{4}-\d{2}-\d{2}( – \d{4}-\d{2}-\d{2})?$/.test(text(r.missed)) ? r.missed : "",
+      milestone: cleanMilestone(r.milestone), seen: cleanSeen(r.seen)
     })
   }
   return out
+}
+
+// ── per-repo schedule ─────────────────────────────────────────────────
+
+// Repos whose GitHub traffic (kind "github") or listing ("listing") is due.
+function githubDelay(r, now) {
+  return pollDelay(r.lastGithub, r.checkGithub, now)
+}
+
+function dueRepos(repos, kind, now) {
+  return repos.filter(function(r) {
+    return (kind === "github" ? githubDelay(r, now) : pollDelay(r.lastListing, r.checkListing, now)) === 0
+  }).map(function(r) { return r.repo })
+}
+
+// ms until the next repo is due. GitHub checks only count when signed in;
+// listing checks only for repos that have a plugin id.
+function nextDelay(repos, now, signedIn) {
+  var best = -1
+  for (var i = 0; i < repos.length; i++) {
+    var r = repos[i]
+    var delays = []
+    if (signedIn) delays.push(githubDelay(r, now))
+    if (r.pluginId) delays.push(pollDelay(r.lastListing, r.checkListing, now))
+    for (var j = 0; j < delays.length; j++) if (best < 0 || delays[j] < best) best = delays[j]
+  }
+  return best
+}
+
+// ── bar number and milestones ─────────────────────────────────────────
+
+function findRepo(repos, name) {
+  for (var i = 0; i < repos.length; i++) if (repos[i].repo === name) return repos[i]
+  return null
+}
+
+// source: "all" or a tracked repo's name (falls back to all repos).
+function barValue(repos, source, stat, today) {
+  var one = source && source !== "all" ? findRepo(repos, source) : null
+  return metricValue(totalsFor(one ? [one] : repos, "all", today), stat)
+}
+
+// Milestones due now: each repo's own (if on) and the combined one (if on).
+// -> { seen: {repo name or "": {metric: n}}, celebrations: [{repo, metric, value}] }
+// A repo or combined total seen for the first time is recorded silently.
+function milestoneCheck(repos, combined, combinedSeen, today) {
+  var seen = {}, celebrations = []
+  function check(key, list, cfg, seenMap) {
+    var value = metricValue(totalsFor(list, "all", today), cfg.metric)
+    var before = seenMap[cfg.metric] === undefined ? -1 : seenMap[cfg.metric]
+    var r = checkMilestone(value, cfg.step, before)
+    if (r.seen !== before) { seen[key] = {}; seen[key][cfg.metric] = r.seen }
+    if (r.celebrate > 0) celebrations.push({ repo: key, metric: cfg.metric, value: r.celebrate })
+  }
+  for (var i = 0; i < repos.length; i++)
+    if (repos[i].milestone && repos[i].milestone.on) check(repos[i].repo, [repos[i]], repos[i].milestone, repos[i].seen || {})
+  if (combined && combined.on && repos.length > 0) check("", repos, cleanMilestone(combined), combinedSeen || {})
+  return { seen: seen, celebrations: celebrations }
 }
 
 // ── formatting ────────────────────────────────────────────────────────

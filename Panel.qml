@@ -18,27 +18,51 @@ Panel {
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
-  readonly property string period: Model.PERIODS.indexOf(setting("period", "all")) >= 0 ? setting("period", "all") : "all"
-  readonly property string countMode: ["total", "unique", "both"].indexOf(setting("countMode", "both")) >= 0 ? setting("countMode", "both") : "both"
-  readonly property string barStat: Model.METRICS.indexOf(setting("barStat", "clones")) >= 0 ? setting("barStat", "clones") : "clones"
+  function pick(key, allowed, fallback) {
+    var v = setting(key, fallback)
+    return allowed.indexOf(v) >= 0 ? v : fallback
+  }
+
+  // Every setting, read from this widget's shell.json entry (written by the
+  // settings page in the dropdown, or Omarchy's widget settings).
+  readonly property string period: pick("period", Model.PERIODS, "all")
+  readonly property string countMode: pick("countMode", ["total", "unique", "both"], "both")
+  readonly property string barStat: pick("barStat", Model.METRICS, "clones")
+  readonly property string barSource: {
+    var v = String(setting("barSource", "all"))
+    return v === "all" || Model.findRepo(PlugStore.repos, v) ? v : "all"
+  }
+  readonly property string panelSize: pick("panelSize", ["compact", "normal", "tall"], "normal")
+  readonly property string accentRole: pick("accent", ["theme", "foreground", "urgent"], "theme")
+  readonly property color accent: accentRole === "foreground" ? Color.foreground : (accentRole === "urgent" ? Color.urgent : Color.accent)
   readonly property bool animations: setting("animations", true) !== false
-  readonly property bool milestones: setting("milestones", true) !== false
-  readonly property string milestoneMetric: Model.METRICS.indexOf(setting("milestoneMetric", "clones")) >= 0 ? setting("milestoneMetric", "clones") : "clones"
-  readonly property int milestoneStep: Math.max(1, Math.min(1000000, Number(setting("milestoneStep", 100)) || 100))
+  readonly property bool showCombined: setting("showCombined", true) !== false
+  readonly property var combinedMilestone: ({
+    on: setting("combinedMilestones", true) !== false,
+    metric: pick("milestoneMetric", Model.METRICS, "clones"),
+    step: Math.max(1, Math.min(1000000, Number(setting("milestoneStep", 100)) || 100))
+  })
+  readonly property string defaultCheckGithub: pick("defaultCheckGithub", Model.CHECKS, "daily")
+  readonly property string defaultCheckListing: pick("defaultCheckListing", Model.CHECKS, "daily")
+
+  // Panel sizes in Style.space units. The height is fixed: long repo lists scroll.
+  readonly property var metrics: panelSize === "compact" ? { width: 360, height: 520 }
+    : (panelSize === "tall" ? { width: 440, height: 820 } : { width: 400, height: 640 })
 
   readonly property string today: Model.dayKey(PlugStore.now)
-  readonly property var allTime: Model.totalsFor(PlugStore.repos, "all", today)
-  readonly property int barValue: Model.metricValue(allTime, barStat)
+  readonly property int barValue: Model.barValue(PlugStore.repos, barSource, barStat, today)
   readonly property string barText: PlugStore.repos.length === 0 ? "" : Model.compact(barValue)
 
   // A milestone crossed since the dropdown was last opened: the bar glows until then.
-  readonly property int milestoneValue: Model.metricValue(allTime, milestoneMetric)
-  readonly property bool milestonePending: milestones && PlugStore.stateLoaded
-      && PlugStore.seenMilestone(milestoneMetric) >= 0
-      && Model.checkMilestone(milestoneValue, milestoneStep, PlugStore.seenMilestone(milestoneMetric)).celebrate > 0
+  readonly property bool milestonePending: PlugStore.stateLoaded
+      && Model.milestoneCheck(PlugStore.repos, combinedMilestone, PlugStore.state.seen, today).celebrations.length > 0
   readonly property bool disco: milestonePending && animations
 
-  function applySettings() { PlugStore.applySettings(setting("pollEvery", "daily")) }
+  // Read straight from the settings: this runs on settingsChanged, before
+  // the properties derived from them have caught up.
+  function applySettings() {
+    PlugStore.applySettings(pick("defaultCheckGithub", Model.CHECKS, "daily"), pick("defaultCheckListing", Model.CHECKS, "daily"))
+  }
   onSettingsChanged: applySettings()
   Component.onCompleted: applySettings()
 
@@ -53,7 +77,7 @@ Panel {
       root.bar.shell.updateEntryInline(root.moduleName, entry)
   }
 
-  onOpenedChanged: if (opened) { PlugStore.panelOpened(); view.reveal() }
+  onOpenedChanged: if (opened) { PlugStore.panelOpened(); view.reveal() } else view.reset()
 
   property real hue: 0
   NumberAnimation on hue { running: root.disco; from: 0; to: 1; duration: 1600; loops: Animation.Infinite }
@@ -66,8 +90,9 @@ Panel {
     text: root.barText
     tooltipText: {
       if (PlugStore.repos.length === 0) return "HowIsMyPlug?: add a repo to start tracking"
-      var t = root.allTime
-      var tip = "All time, " + PlugStore.repos.length + (PlugStore.repos.length === 1 ? " repo" : " repos")
+      var one = root.barSource === "all" ? null : Model.findRepo(PlugStore.repos, root.barSource)
+      var t = Model.totalsFor(one ? [one] : PlugStore.repos, "all", root.today)
+      var tip = (one ? one.repo : "All repos") + ", all time"
           + "\nClones " + Model.countText(t.clones.count, t.clones.uniques, "both")
           + "\nRepo views " + Model.countText(t.views.count, t.views.uniques, "both")
           + "\nListing views " + Model.grouped(t.market.views) + " · copies " + Model.grouped(t.market.copies) + " · hearts " + Model.grouped(t.market.hearts)
@@ -96,7 +121,7 @@ Panel {
           font.family: root.fontFamily
           font.pixelSize: Style.bar.iconFont
           renderType: Text.NativeRendering
-          color: root.disco ? root.discoColor : (root.milestonePending ? Color.accent : root.barForeground)
+          color: root.disco ? root.discoColor : (root.milestonePending ? root.accent : root.barForeground)
         }
       }
     }
@@ -111,14 +136,14 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(400))
-    contentHeight: panel.fittedContentHeight(view.implicitHeight, Style.space(720))
+    contentWidth: panel.fittedContentWidth(Style.space(root.metrics.width))
+    contentHeight: panel.fittedContentHeight(Style.space(root.metrics.height), Style.space(root.metrics.height))
 
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
       blocked: view.editing
-      onCloseRequested: root.close()
+      onCloseRequested: view.back()
       onTabRequested: function(direction) { root.switchPanel(direction) }
     }
 

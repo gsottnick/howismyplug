@@ -17,7 +17,8 @@ Pick a period (7, 14 or 30 days, or all time) and total, unique or both counts i
 1. Add the plugin from the Omarchy plugin marketplace, or:
    `omarchy plugin add https://github.com/gsottnick/howismyplug`
 2. Open the dropdown and type a repo you own (`owner/repo`). Marketplace numbers show right away.
-3. For clones and repo views, click **Sign in with GitHub**. The code is copied for you: paste it
+3. For clones and repo views, click **Sign in with GitHub** (the **?** button in the dropdown shows these
+   steps too). The code is copied for you: paste it
    on the page that opens and click Authorize. Then click **Give access** (or **Choose repos**)
    and pick your repos. Picking "All repositories" means you never have to do it again.
 
@@ -32,25 +33,40 @@ under "administration"; read-only can't change anything.
 
 ## Settings
 
-Change them in Omarchy's bar widget settings. The period can also be picked straight from the dropdown.
+Everything is in the dropdown. **⚙** opens the settings, **?** the help, and each repo in the list
+opens its own page.
+
+**Each repo** (tap it in the list): its own numbers for the chosen period, how often to check GitHub
+traffic and the listing (hourly, daily, weekly, every 2 weeks), its own milestones (on/off, which stat,
+every how many), and links to the repo and its listing.
+
+**Settings page**:
 
 | Setting | Choices | Default |
 | --- | --- | --- |
-| Check GitHub traffic | hourly, daily, weekly, every 2 weeks | daily |
+| Bar number comes from | all repos combined, or any one repo | all repos |
+| Bar number shows | clones, unique clones, repo views, unique repo views, listing views, copies, hearts | clones |
+| Dropdown size | compact, normal, tall (the height is fixed; long lists scroll) | normal |
+| Highlight colour | theme accent, text, alert | accent |
 | Clones and views | total, unique, both | both |
-| Period shown | 7 days, 14 days, 30 days, all time | all time |
-| Number in the bar | clones, unique clones, repo views, unique repo views, listing views, copies, hearts | clones |
 | Animations | on, off | on |
-| Milestones | on, off | on |
-| Milestones count | any stat above | clones |
-| A milestone every | any number | 100 |
+| Show combined totals | on, off | on |
+| Combined milestones | on/off, which stat, every how many | on, clones, 100 |
+| New repos start with | GitHub and listing check intervals | daily, daily |
+
+The period (7, 14, 30 days or all time) is picked at the top of the overview and each repo page. The
+same settings also appear in Omarchy's widget settings.
 
 ## Good to know
 
 - **History starts when you add a repo**, plus the 14 days GitHub still has at that moment.
-- **Unique numbers** for 7 days, 30 days and all time add up each day's unique visitors, so someone
-  who comes back on another day counts twice. GitHub doesn't keep more than that. The 14-day
-  unique number is GitHub's exact count.
+- **Totals** (clones, views) add up day by day: each day is stored once and replaced, never added, when
+  a later check sees it again, so overlapping 14-day windows can't double count.
+- **Unique numbers**: lifetime starts with GitHub's 14-day unique number at the first check, then adds
+  each new day's unique number as GitHub reports it (100 at the start + 20 over the next days = 120).
+  "14 days" shows GitHub's own number, the same as its traffic page. GitHub's window rolls (a day in, a
+  day out) and every day is saved before it drops out. `tests/math.test.mjs` proves this against
+  simulated traffic on every schedule.
 - **Gaps**: if the computer is off (or the shell isn't running) for more than 14 days, the days
   GitHub dropped in between are gone. The dropdown says which ones.
 - **Marketplace numbers** are the marketplace's own lifetime counts; periods show the growth
@@ -83,6 +99,9 @@ cd tests && ../.venv-harness/bin/python -m unittest panel_test -v   # the real p
 omarchy plugin validate .
 ```
 
+The panel tests load Omarchy's shell components from `/usr/share/omarchy/shell`; if your Omarchy is
+newer than the version CI pins (`OMARCHY_REF` in `.github/workflows/tests.yml`), point
+`OMARCHY_SHELL` at a checkout of that version's `shell/` folder.
 The panel tests run the real QML against a local fake of GitHub and the marketplace and a fake
 `secret-tool`, so they never touch your account or keyring. `tools/preview/make-preview.py`
 rebuilds `preview.png`.

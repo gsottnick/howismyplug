@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.gsottnick.howismyplug",
   "name": "HowIsMyPlug?",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "Gavin Sottnick",
   "license": "MIT",
   "description": "For plugin authors: lifetime clones and repo views for your GitHub repos, plus your marketplace listing's views, copies and hearts. Free, local, with milestone celebrations.",
@@ -19,43 +19,86 @@
     "allowMultiple": false,
     "defaultSection": "right",
     "defaults": {
-      "pollEvery": "daily",
-      "countMode": "both",
       "period": "all",
+      "countMode": "both",
+      "barSource": "all",
       "barStat": "clones",
+      "panelSize": "normal",
+      "accent": "theme",
       "animations": true,
-      "milestones": true,
+      "showCombined": true,
+      "combinedMilestones": true,
       "milestoneMetric": "clones",
-      "milestoneStep": 100
+      "milestoneStep": 100,
+      "defaultCheckGithub": "daily",
+      "defaultCheckListing": "daily"
     },
     "schema": [
       {
-        "key": "pollEvery",
+        "key": "period",
         "type": "enum",
-        "label": "Check GitHub traffic",
-        "options": ["hourly", "daily", "weekly", "biweekly"],
-        "defaultValue": "daily"
+        "label": "Period shown",
+        "options": [
+          "7d",
+          "14d",
+          "30d",
+          "all"
+        ],
+        "defaultValue": "all"
       },
       {
         "key": "countMode",
         "type": "enum",
         "label": "Clones and views: total, unique, or both",
-        "options": ["total", "unique", "both"],
+        "options": [
+          "total",
+          "unique",
+          "both"
+        ],
         "defaultValue": "both"
       },
       {
-        "key": "period",
-        "type": "enum",
-        "label": "Period shown",
-        "options": ["7d", "14d", "30d", "all"],
+        "key": "barSource",
+        "type": "string",
+        "label": "Bar number from: all, or a tracked repo (owner/repo)",
         "defaultValue": "all"
       },
       {
         "key": "barStat",
         "type": "enum",
-        "label": "Number in the bar (all tracked repos, all time)",
-        "options": ["clones", "uniqueClones", "views", "uniqueViews", "listingViews", "copies", "hearts"],
+        "label": "Bar number shows",
+        "options": [
+          "clones",
+          "uniqueClones",
+          "views",
+          "uniqueViews",
+          "listingViews",
+          "copies",
+          "hearts"
+        ],
         "defaultValue": "clones"
+      },
+      {
+        "key": "panelSize",
+        "type": "enum",
+        "label": "Dropdown size",
+        "options": [
+          "compact",
+          "normal",
+          "tall"
+        ],
+        "defaultValue": "normal"
+      },
+      {
+        "key": "accent",
+        "type": "enum",
+        "label": "Highlight colour, from the theme",
+        "options": [
+          "theme",
+          "foreground",
+          "urgent"
+        ],
+        "defaultValue": "theme"
       },
       {
         "key": "animations",
@@ -64,26 +107,64 @@
         "defaultValue": true
       },
       {
-        "key": "milestones",
+        "key": "showCombined",
         "type": "boolean",
-        "label": "Milestone celebration when you open the dropdown",
+        "label": "Show combined totals for all repos",
+        "defaultValue": true
+      },
+      {
+        "key": "combinedMilestones",
+        "type": "boolean",
+        "label": "Milestones for all repos added up (each repo's own are set in the dropdown)",
         "defaultValue": true
       },
       {
         "key": "milestoneMetric",
         "type": "enum",
-        "label": "Milestones count",
-        "options": ["clones", "uniqueClones", "views", "uniqueViews", "listingViews", "copies", "hearts"],
+        "label": "Combined milestones count",
+        "options": [
+          "clones",
+          "uniqueClones",
+          "views",
+          "uniqueViews",
+          "listingViews",
+          "copies",
+          "hearts"
+        ],
         "defaultValue": "clones"
       },
       {
         "key": "milestoneStep",
         "type": "integer",
-        "label": "A milestone every",
+        "label": "A combined milestone every",
         "min": 1,
         "max": 1000000,
         "step": 10,
         "defaultValue": 100
+      },
+      {
+        "key": "defaultCheckGithub",
+        "type": "enum",
+        "label": "New repos: check GitHub traffic",
+        "options": [
+          "hourly",
+          "daily",
+          "weekly",
+          "biweekly"
+        ],
+        "defaultValue": "daily"
+      },
+      {
+        "key": "defaultCheckListing",
+        "type": "enum",
+        "label": "New repos: check the listing",
+        "options": [
+          "hourly",
+          "daily",
+          "weekly",
+          "biweekly"
+        ],
+        "defaultValue": "daily"
       }
     ]
   }
