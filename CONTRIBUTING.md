@@ -20,9 +20,10 @@ omarchy plugin validate .
   GitHub and the marketplace (`tests/fake_github.py`) and a fake `secret-tool` (`tests/fake-bin`), so it
   never touches a real account or keyring. It checks where the token goes, too.
 
-The panel tests load Omarchy's shell components from `/usr/share/omarchy/shell`. If your Omarchy is
-newer than the version CI pins (`OMARCHY_REF` in `.github/workflows/tests.yml`), point `OMARCHY_SHELL`
-at a checkout of that version's `shell/` folder. PySide6 must stay below 6.12 (Qt 6.12's `Color`
+The panel tests load Omarchy's shell components from `/usr/share/omarchy/shell`, or from
+`OMARCHY_SHELL` (a checkout's `shell/` folder). CI runs them on every Omarchy listed in `OMARCHY_REFS`
+(`.github/workflows/tests.yml`): the plugin adapts to each (Omarchy 4.5 draws bar labels itself and has
+a system-wide animation switch; 4.0.x doesn't), and `tests/panel_test.py` checks both paths. PySide6 must stay below 6.12 (Qt 6.12's `Color`
 shadows Omarchy's in the harness).
 
 ## Preview

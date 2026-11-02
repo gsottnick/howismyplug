@@ -34,6 +34,11 @@ sys.path.insert(0, str(HERE))
 import fake_github  # noqa: E402
 
 OMARCHY = Path(os.environ.get("OMARCHY_SHELL", "/usr/share/omarchy/shell"))
+# What the Omarchy under test offers; the plugin adapts to both.
+_bar_icon = OMARCHY / "Ui" / "BarIconButton.qml"
+OMARCHY_HAS_LABELS = _bar_icon.exists() and "property string labelText" in _bar_icon.read_text()
+_style = OMARCHY / "Commons" / "Style.qml"
+OMARCHY_HAS_REDUCE_MOTION = _style.exists() and "property bool reduceMotion" in _style.read_text()
 
 IGNORED_QT_WARNINGS = (
     "propertyCache.append",
@@ -463,6 +468,30 @@ class PanelTest(unittest.TestCase):
         self.assertEqual(s["view"]["reveals"], h.after(0)["view"]["reveals"] + 1, "replayed without reopening")
         self.assertTrue(s["panel"]["opened"])
         self.assertTrue(any(path == "/market/v1/stats" for _, path, _ in self.fake.requests), "and checked")
+
+    def test_the_bar_shows_the_number_beside_the_plug(self):
+        h = self.harness()
+        h.sign_in_with_keyring()
+        h.seed({"repos": [{"repo": "octo/plug", "pluginId": "io.github.octo.plug", "idChecked": True}]})
+        s = h.run(["wait:1500"], extra=["--closed"])
+        self.assertEqual(s["panel"]["barText"], "18")
+        self.assertEqual(s["panel"]["barShown"], "18", "the number is actually drawn")
+        # The slot grows to fit it, so it doesn't overlap the next widget.
+        empty = self.harness()
+        e = empty.run(["wait:300"], extra=["--closed"])
+        self.assertEqual(e["panel"]["barShown"], "")
+        self.assertGreater(s["panel"]["slotSize"], e["panel"]["slotSize"])
+        self.assertGreater(s["panel"]["width"], e["panel"]["width"])
+        # Omarchy 4.5+ draws it with its own label; 4.0.x gets it drawn by the plugin.
+        self.assertEqual(s["panel"]["nativeLabel"], OMARCHY_HAS_LABELS)
+
+    def test_omarchys_own_animation_switch_turns_ours_off(self):
+        if not OMARCHY_HAS_REDUCE_MOTION:
+            self.skipTest("this Omarchy has no animation switch (added in 4.5)")
+        h = self.harness()
+        s = h.run(["wait:200", "reduce-motion"])
+        self.assertTrue(h.after(0)["panel"]["animations"])
+        self.assertFalse(s["panel"]["animations"])
 
     def test_a_removed_repo_closes_its_page(self):
         h = self.harness()

@@ -6,6 +6,8 @@ from PySide6.QtCore import Property, QObject, QProcess, QTimer, Signal, Slot
 from PySide6.QtNetwork import QLocalSocket
 from PySide6.QtQml import QmlElement
 
+from .qmlprops import declare
+
 QML_IMPORT_NAME = "Quickshell.Io"
 QML_IMPORT_MAJOR_VERSION = 1
 
@@ -149,6 +151,18 @@ class Process(QObject):
 
     workingDirectory = Property(str, _get_wd, _set_wd)
 
+    # Extra environment variables for the child (Omarchy 4.5 sets some).
+    def _get_env(self):
+        return getattr(self, "_environment", {})
+
+    def _set_env(self, value):
+        from PySide6.QtQml import QJSValue
+        if isinstance(value, QJSValue):
+            value = value.toVariant()
+        self._environment = dict(value or {})
+
+    environment = Property("QVariantMap", _get_env, _set_env)
+
     def _get_running(self):
         return self._running
 
@@ -210,6 +224,15 @@ class Process(QObject):
         self._proc.setArguments(self._command[1:])
         if self._working_directory:
             self._proc.setWorkingDirectory(self._working_directory)
+        if getattr(self, "_environment", None):
+            from PySide6.QtCore import QProcessEnvironment
+            env = QProcessEnvironment.systemEnvironment()
+            for key, value in self._environment.items():
+                if value is None:
+                    env.remove(str(key))
+                else:
+                    env.insert(str(key), str(value))
+            self._proc.setProcessEnvironment(env)
         self._proc.readyReadStandardOutput.connect(self._drain_stdout)
         self._proc.readyReadStandardError.connect(self._drain_stderr)
         self._proc.finished.connect(self._on_finished)
@@ -298,6 +321,7 @@ class FileView(QObject):
     watchChanges = _flag("_watch_changes", False)
     printErrors = _flag("_print_errors", True)
     blockLoadingUntilLoaded = _flag("_block", False)
+    blockLoading = _flag("_block_loading", False)   # Quickshell's name for it (Omarchy 4.5 sets it)
     del _flag
 
     @Slot(result=str)
@@ -318,28 +342,18 @@ class FileView(QObject):
 
 @QmlElement
 class IpcHandler(QObject):
-    """Accepts the declaration so panels load; the harness calls methods directly."""
+    """Accepts the declaration so panels load; the harness calls methods directly.
+    Its properties notify, so bindings over them (Omarchy 4.5's IpcRegistry) are fine."""
+
+    changed = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._target = ""
         self._enabled = True
 
-    def _get_target(self):
-        return self._target
-
-    def _set_target(self, value):
-        self._target = value
-
-    target = Property(str, _get_target, _set_target)
-
-    def _get_enabled(self):
-        return self._enabled
-
-    def _set_enabled(self, value):
-        self._enabled = value
-
-    enabled = Property(bool, _get_enabled, _set_enabled)
+    target = declare(str, "_target", changed, "")
+    enabled = declare(bool, "_enabled", changed, True)
 
 
 @QmlElement

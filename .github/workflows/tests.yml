@@ -28,10 +28,11 @@ jobs:
     # without privilege escalation anywhere in this repo.
     container: ubuntu:24.04
     env:
-      # The Omarchy release whose Commons/Ui the panel is tested against.
-      # Pinned so a change in Omarchy can't fail unrelated PRs; bump it when
-      # a new stable Omarchy ships.
-      OMARCHY_REF: v4.0.6
+      # The Omarchy releases whose Commons/Ui the panel is tested against: the
+      # current stable one and the next one (the plugin adapts to each). Pinned
+      # so a change in Omarchy can't fail unrelated PRs; move them along as
+      # Omarchy ships.
+      OMARCHY_REFS: v4.0.6 v4.5.0-rc3
       DEBIAN_FRONTEND: noninteractive
     steps:
       - name: Install git, Python, Qt's runtime libraries and D-Bus
@@ -44,7 +45,10 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Fetch Omarchy's shell components
-        run: git clone --depth 1 --branch "$OMARCHY_REF" https://github.com/basecamp/omarchy.git "$RUNNER_TEMP/omarchy"
+        run: |
+          for ref in $OMARCHY_REFS; do
+            git clone -q --depth 1 --branch "$ref" https://github.com/basecamp/omarchy.git "$RUNNER_TEMP/omarchy-$ref"
+          done
 
       # Below 6.12: Qt 6.12's QtQuick exports its own `Color`, which shadows
       # Omarchy's in this harness (see AGENTS.md).
@@ -53,11 +57,14 @@ jobs:
           python3 -m venv .venv-harness
           .venv-harness/bin/pip install -q 'PySide6>=6.10,<6.12'
 
-      - name: Run the panel suite
+      - name: Run the panel suite on each Omarchy
         working-directory: tests
-        env:
-          OMARCHY_SHELL: ${{ runner.temp }}/omarchy/shell
-        run: ../.venv-harness/bin/python -m unittest panel_test -v
+        run: |
+          for ref in $OMARCHY_REFS; do
+            echo "::group::Omarchy $ref"
+            OMARCHY_SHELL="$RUNNER_TEMP/omarchy-$ref/shell" ../.venv-harness/bin/python -m unittest panel_test -v
+            echo "::endgroup::"
+          done
 
       - name: No symlinks in the plugin (omarchy plugin validate rejects them)
         run: |
