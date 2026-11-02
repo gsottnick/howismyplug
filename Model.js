@@ -233,9 +233,12 @@ function recordTraffic(series, t, now) {
   var end = keys[keys.length - 1]
   out.last14 = { count: t.count, uniques: t.uniques, end: end }
   // The window seen at the first check is where lifetime counting starts.
-  if (!out.first) out.first = { uniques: t.uniques, end: end }
-  // A later reading of that same window (its last day still growing) is more complete.
-  else if (out.first.end === end && t.uniques > out.first.uniques) out.first = { uniques: t.uniques, end: end }
+  // A later reading of that same window (its last day still growing) is more
+  // complete. If GitHub steps back to an earlier window (its first answer for
+  // a new repo can run ahead with nothing counted yet), that settled window is
+  // the real start; the days after it are added one by one like any others.
+  if (!out.first || end < out.first.end || (end === out.first.end && t.uniques > out.first.uniques))
+    out.first = { uniques: t.uniques, end: end }
   return out
 }
 

@@ -239,3 +239,19 @@ test("Gavin's real omatuple numbers: 152 when first checked, + 46 on 11/01 = 198
   const migrated = M.cleanSeries({ days: next, last14: { count: 679, uniques: 191 }, last14Day: "2026-11-02" })
   assert.equal(M.uniquesFor(migrated, "all", "2026-11-02"), 191)
 })
+
+test("a new repo's first answer can run ahead with nothing counted: the settled window is the start (seen live)", () => {
+  const answer = (days, count, uniques) => JSON.stringify({ count, uniques,
+    clones: Object.entries(days).map(([d, [c, u]]) => ({ timestamp: d + "T00:00:00Z", count: c, uniques: u })) })
+  const zeros = {}
+  for (let i = 0; i < 14; i++) zeros[M.addDays("2026-11-02", -i)] = [0, 0]
+  let s = M.recordTraffic(null, M.parseTraffic(answer(zeros, 0, 0), "clones"), Date.UTC(2026, 10, 2, 11))
+  const real = {}
+  for (let i = 0; i < 14; i++) real[M.addDays("2026-11-01", -i)] = [0, 0]
+  real["2026-11-01"] = [17, 8]
+  s = M.recordTraffic(s, M.parseTraffic(answer(real, 17, 8), "clones"), Date.UTC(2026, 10, 2, 12))
+  assert.deepEqual(s.first, { uniques: 8, end: "2026-11-01" })
+  assert.equal(M.uniquesFor(s, "all", "2026-11-02"), 8)
+  assert.equal(M.uniquesFor(s, "14d", "2026-11-02"), 8)
+  assert.equal(M.trafficFor(s, "all", "2026-11-02").count, 17)
+})
