@@ -157,6 +157,12 @@ test("totals across repos and the bar metric", () => {
   ], "all", today)
   assert.equal(forked.clones.count, 8)
   assert.deepEqual(forked.market, { views: 4, copies: 1, hearts: 1 })
+  // The fork listed first, before its listing numbers arrived: the original's still count.
+  const early = M.totalsFor([
+    { pluginId: "io.x.plug", clones: null, market: null },
+    { pluginId: "io.x.plug", clones: null, market: listing },
+  ], "all", today)
+  assert.deepEqual(early.market, { views: 4, copies: 1, hearts: 1 })
 })
 
 test("milestones: silent first run, one celebration for the newest", () => {

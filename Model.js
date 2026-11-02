@@ -249,8 +249,9 @@ function totalsFor(repos, period, today) {
     var c = trafficFor(r.clones, period, today), v = trafficFor(r.views, period, today)
     t.clones.count += c.count; t.clones.uniques += c.uniques
     t.views.count += v.count; t.views.uniques += v.uniques
-    // A fork tracked next to its original shares one listing: count it once.
-    if (r.pluginId && listings[r.pluginId]) continue
+    // A fork tracked next to its original shares one listing: count it once,
+    // from the first repo that has its numbers.
+    if (!r.market || (r.pluginId && listings[r.pluginId])) continue
     if (r.pluginId) listings[r.pluginId] = true
     var m = marketFor(r.market, period, today)
     t.market.views += m.views; t.market.copies += m.copies; t.market.hearts += m.hearts
