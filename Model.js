@@ -235,14 +235,18 @@ function lowerBound(series, from, to) {
   return best
 }
 
-// A finished block: GitHub's count for the window ending on its last day,
-// plus anyone who came later that day than that reading saw. Without such a
-// reading (computer off at the time), the best proven lower bound.
+// A finished block: GitHub's own count from the latest reading of the window
+// that ends on its last day. Nothing is added to it: people who came later
+// that day can't be told apart from people already counted, so adding them
+// could count someone twice. With GitHub a day or more behind, that reading
+// came after the day was over and is exact; with GitHub on today, the plugin
+// checks at 23:55 UTC so at most the block's last minutes are missing.
+// Without such a reading (computer off), the best proven lower bound.
 function blockValue(series, k) {
   var end = blockEnd(series.anchor, k)
   var r = series.ends ? series.ends[end] : null
-  if (r) return r[0] + Math.max(0, dailyUniques(series, end) - r[1])
-  return Math.max((series.lb && series.lb[k]) || 0, lowerBound(series, blockStart(series.anchor, k), end))
+  var floor = Math.max((series.lb && series.lb[k]) || 0, lowerBound(series, blockStart(series.anchor, k), end))
+  return r ? Math.max(r[0], floor) : floor
 }
 
 function uniquesFor(series, period, today) {
@@ -289,15 +293,18 @@ function recordTraffic(series, t, now) {
   return out
 }
 
-// When the block GitHub is in finishes, its last day needs a reading. From
-// the start of that day (UTC, GitHub's days) the repo is checked hourly until
-// GitHub's window moves past it, whatever the repo's own schedule is.
+// When the block GitHub is in finishes, its last day needs a reading as late
+// as possible. From the start of that day (UTC, GitHub's days) the repo is
+// checked hourly until GitHub's window moves past it, plus once at 23:55,
+// whatever the repo's own schedule is.
 // -> the time that watch starts, or 0 if there is nothing to watch yet.
 function boundaryAt(series) {
   if (!series || !series.anchor || !series.last14 || !series.last14.end) return 0
   var be = blockEnd(series.anchor, blockOf(series.anchor, series.last14.end))
   return Date.parse(be + "T00:00:00Z")
 }
+
+var LATE_CHECK_MS = 23 * 3600000 + 55 * 60000
 
 // Marketplace counts are lifetime. A period shows the growth since the last
 // snapshot taken before the period started.
@@ -395,6 +402,7 @@ function missedRange(lastPoll, now) {
   var from = addDays(lastSeen, 1), to = addDays(firstVisible, -1)
   return from === to ? from : from + " – " + to
 }
+
 
 // ── state file ────────────────────────────────────────────────────────
 
@@ -504,8 +512,15 @@ function cleanState(raw) {
 function githubDelay(r, now) {
   var d = pollDelay(r.lastGithub, r.checkGithub, now)
   var starts = [boundaryAt(r.clones), boundaryAt(r.views)].filter(function(t) { return t > 0 })
-  for (var i = 0; i < starts.length; i++)
-    d = Math.min(d, now >= starts[i] ? pollDelay(r.lastGithub, "hourly", now) : starts[i] - now)
+  for (var i = 0; i < starts.length; i++) {
+    var start = starts[i], late = start + LATE_CHECK_MS
+    if (now < start) d = Math.min(d, start - now)
+    else {
+      d = Math.min(d, pollDelay(r.lastGithub, "hourly", now))
+      // The 23:55 check on the block's last day, unless one already happened.
+      if (r.lastGithub < late) d = Math.min(d, Math.max(0, late - now))
+    }
+  }
   return d
 }
 

@@ -65,8 +65,10 @@ same settings also appear in Omarchy's widget settings.
 - **Unique numbers**: GitHub only counts different people over its latest 14 days. All-time unique adds
   up back-to-back 14-day blocks from the day tracking started, each block being GitHub's own count for
   it (100 in the first block + 20 in the next = 120). Someone who returns in a later block counts again,
-  as on GitHub's page. The block in progress only rises and lands on GitHub's number when it ends. To
-  read each block exactly, the plugin checks hourly around a block's last day, whatever the schedule.
+  as on GitHub's page, but nobody is ever counted twice within a block. The block in progress only rises
+  and lands on GitHub's number when it ends. To read each block exactly, the plugin checks hourly on a
+  block's last day and once more at 23:55 UTC, whatever the schedule; at worst someone who first clones
+  in a block's final minutes is missed.
   `tests/math.test.mjs` proves all of this against simulated traffic on every schedule.
 - **Gaps**: if the computer is off (or the shell isn't running) for more than 14 days, the days
   GitHub dropped in between are gone. The dropdown says which ones.

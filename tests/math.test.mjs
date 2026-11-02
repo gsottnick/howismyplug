@@ -9,8 +9,9 @@
 // - Clone counts: every day counted once. Totals for any period equal the truth.
 // - Unique people: lifetime = sum of back-to-back 14-day blocks from the first
 //   day tracked, each block = how many different people came in it (GitHub's
-//   own 14-day count for that window). Exact when each block's last day got a
-//   reading; never more than that otherwise. Never goes down between checks.
+//   own 14-day count for that window). Never more than that, ever: no person
+//   is counted twice within a block. Exact when the block's last reading saw
+//   the whole block (GitHub a day behind, or the 23:55 check). Never goes down.
 
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
@@ -127,7 +128,10 @@ for (const every of ["hourly", "daily", "weekly", "biweekly"]) {
       // Clone counts: every day from the anchor through GitHub's last day, once
       // (that last day as far as GitHub had counted it at the final check).
       assert.equal(M.trafficFor(series, "all", M.dayKey(until)).count, countThrough(truth, anchor, lastEnd, lastT))
-      // Unique people: the sum of the finished blocks, exactly, plus the block in progress (a lower bound).
+      // Unique people: every finished block exactly (checked one by one), plus
+      // the block in progress as a lower bound of its real count.
+      for (let k = 0, b = anchor; b + 13 <= lastBlockEnd; k++, b += 14)
+        assert.equal(M.blockValue(series, k), blockPeople(truth, b, b + 13), `block ${k}`)
       const done = expectedUnique(truth, anchor, lastBlockEnd)
       const got = M.uniquesFor(series, "all", M.dayKey(until))
       const inProgress = lastEnd > lastBlockEnd ? blockPeople(truth, lastBlockEnd + 1, lastEnd) : 0
@@ -176,6 +180,29 @@ test("missed boundary readings (computer off) can only undercount, never overcou
     // Clone counts stay exact as long as no gap reaches 14 days.
     assert.equal(M.trafficFor(series, "all", M.dayKey(until)).count, countThrough(truth, anchor, lastEnd, lastT), `seed ${seed}: counts`)
   }
+})
+
+test("GLM's case: a returner after the block's last reading is not counted twice", () => {
+  // Block 0 = days 0..13. A comes on day 2 and again late on day 13; B comes early on day 13.
+  const truth = Array.from({ length: DAYS }, (_, d) => ({ key: M.dayKey(START + d * DAY), hours: Array.from({ length: 24 }, () => []) }))
+  truth[2].hours[9].push("A")
+  truth[13].hours[1].push("B")
+  truth[13].hours[23].push("A")
+  let series = null
+  // Readings on day 13 at 22:00 (A's second visit not yet seen), then day 14 (window moved on).
+  for (const t of [START + 13 * DAY + 22 * HOUR, START + 14 * DAY + 3 * HOUR])
+    series = M.recordTraffic(series, M.parseTraffic(githubAt(truth, t), "clones"), t)
+  assert.equal(M.blockValue(series, 0), 2, "two different people in block 0")
+  assert.equal(M.uniquesFor(series, "all", truth[14].key), 2)
+})
+
+test("a new person in a block's last minutes, after the 23:55 check, is the only possible miss", () => {
+  const truth = Array.from({ length: DAYS }, (_, d) => ({ key: M.dayKey(START + d * DAY), hours: Array.from({ length: 24 }, () => []) }))
+  truth[5].hours[9].push("A")
+  truth[13].hours[1].push("B")
+  // The scheduler's own boundary checks run; a 23:55 reading sees everyone who came before then.
+  const { series } = runScheduler(truth, { every: "weekly", first: START + 13 * DAY + 2 * HOUR, until: START + 15 * DAY })
+  assert.equal(M.blockValue(series, 0), 2)
 })
 
 test("checking the same moment twice, or a hundred times, changes nothing", () => {
