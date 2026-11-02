@@ -190,6 +190,8 @@ Singleton {
   function tick() {
     if (!stateLoaded) return
     root.now = Date.now()
+    // A plugin id that couldn't be looked up yet (network trouble): try again.
+    state.repos.forEach(function(r) { if (!r.idChecked) root.lookUpPluginId(r.repo, "/repos/" + Model.repoPath(r.repo)) })
     var github = root.signedIn ? Model.dueRepos(state.repos, "github", root.now) : []
     var listing = Model.dueRepos(state.repos.filter(function(r) { return r.pluginId !== "" }), "listing", root.now)
     github.forEach(pollRepo)
@@ -288,6 +290,8 @@ Singleton {
   function schedule() {
     if (!stateLoaded) return
     var d = Model.nextDelay(state.repos, Date.now(), root.signedIn)
+    // Unknown plugin ids are retried hourly.
+    if (state.repos.some(function(r) { return !r.idChecked })) d = d < 0 ? 3600000 : Math.min(d, 3600000)
     if (d < 0) { pollTimer.stop(); return }
     pollTimer.interval = Math.max(1000, d)
     pollTimer.restart()

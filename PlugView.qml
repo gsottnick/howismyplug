@@ -33,7 +33,7 @@ Item {
   readonly property var repo: page === "repo" ? Model.findRepo(PlugStore.repos, currentRepo) : null
 
   function openRepo(name) { currentRepo = name; go("repo") }
-  function go(p) { page = p; flick.contentY = 0 }
+  function go(p) { page = p; flick.contentY = 0; confirmRemove = false }
   function back() {
     if (page === "overview") { if (panel) panel.close() }
     else go("overview")
@@ -47,6 +47,8 @@ Item {
   property string tokenError: ""
   property bool tokenMode: false
   property bool codeCopied: false
+  property bool confirmRemove: false
+  Timer { id: confirmTimer; interval: 4000; onTriggered: root.confirmRemove = false }
   Timer { id: copiedTimer; interval: 2000; onTriggered: root.codeCopied = false }
 
   readonly property var checkOptions: [{ value: "hourly", label: "Hourly" }, { value: "daily", label: "Daily" },
@@ -480,14 +482,19 @@ Item {
               fontSize: Style.font.bodySmall
               onClicked: PlugStore.openListing(root.repo.pluginId)
             }
+            // Removing deletes the repo's saved history, so it takes a second click.
             Button {
               objectName: "removeRepoButton"
-              text: "Stop tracking"
+              text: root.confirmRemove ? "Click again: delete its history" : "Stop tracking"
               bordered: true
               foreground: Color.urgent
               fontFamily: root.ff
               fontSize: Style.font.bodySmall
-              onClicked: PlugStore.removeRepo(root.repo.repo)
+              onClicked: {
+                if (!root.confirmRemove) { root.confirmRemove = true; confirmTimer.restart(); return }
+                root.confirmRemove = false
+                PlugStore.removeRepo(root.repo.repo)
+              }
             }
           }
         }

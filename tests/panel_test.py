@@ -369,6 +369,15 @@ class PanelTest(unittest.TestCase):
         self.assertEqual(s["view"]["shown"], {"repo": "octo/plug", "metric": "clones", "value": 100})
         self.assertEqual(s["state"]["seen"]["clones"], 0, "combined off: its count is left alone")
 
+    def test_a_failed_plugin_id_lookup_is_retried(self):
+        h = self.harness()
+        h.seed({"repos": [{"repo": "octo/plug", "idChecked": False}]})
+        s = h.run(["wait:1200"])
+        repo = s["state"]["repos"][0]
+        self.assertTrue(repo["idChecked"])
+        self.assertEqual(repo["pluginId"], "io.github.octo.plug")
+        self.assertEqual(repo["market"]["current"]["views"], 71, "signed out: listing numbers still arrive")
+
     def test_the_dropdown_never_grows_past_its_size(self):
         heights = {}
         for count, size in ((1, "normal"), (60, "normal"), (60, "compact"), (60, "tall")):
@@ -434,7 +443,8 @@ class PanelTest(unittest.TestCase):
     def test_a_removed_repo_closes_its_page(self):
         h = self.harness()
         h.seed({"repos": [{"repo": "octo/plug", "idChecked": True}]})
-        s = h.run(["open-repo:octo/plug", "click:removeRepoButton"])
+        s = h.run(["open-repo:octo/plug", "click:removeRepoButton", "click:removeRepoButton"])
+        self.assertEqual(len(h.after(1)["state"]["repos"]), 1, "the first click only asks")
         self.assertEqual(s["state"]["repos"], [])
         self.assertEqual(s["view"]["page"], "overview")
 
