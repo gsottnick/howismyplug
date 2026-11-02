@@ -123,7 +123,7 @@ test("period sums by calendar day; 14-day unique is GitHub's own count", () => {
   assert.deepEqual(M.trafficFor(series, "14d", today), { count: 140, uniques: 11, exactUniques: true })
   assert.equal(M.trafficFor(series, "30d", today).count, 300)
   assert.equal(M.trafficFor(series, "all", today).count, 400)
-  assert.equal(M.trafficFor(series, "all", today).uniques, 11, "tracking started with this window: one block so far")
+  assert.equal(M.trafficFor(series, "all", today).uniques, 11, "tracking started with this window: GitHub's number for it")
   assert.deepEqual(M.trafficFor(null, "7d", today), { count: 0, uniques: 0, exactUniques: false })
 })
 
@@ -209,9 +209,9 @@ test("the state file is cleaned on load", () => {
   assert.equal(s.authMethod, "token")
   assert.deepEqual(s.seen, { clones: 3 })
   assert.deepEqual(s.repos.map((r) => r.repo), ["a/b", "c/d"])
-  // A file from before the 14-day-block fix: the window and its first day are recovered.
-  assert.deepEqual(s.repos[0].clones, { days: { "2026-11-01": [3, 1] }, anchor: "2026-10-19",
-    last14: { count: 3, uniques: 1, end: "2026-11-01" }, ends: { "2026-11-01": [1, 1] }, lb: {} })
+  // A file from 0.1.0: the window is recovered, and lifetime counting starts from its number.
+  assert.deepEqual(s.repos[0].clones, { days: { "2026-11-01": [3, 1] },
+    last14: { count: 3, uniques: 1, end: "2026-11-01" }, first: { uniques: 1, end: "2026-11-01" } })
   assert.deepEqual(Object.keys(s.repos[0].market.snaps), ["2026-11-01"])
   assert.equal(s.repos[1].pluginId, "")
   assert.equal(s.repos[1].access, "")

@@ -279,7 +279,7 @@ Item {
           width: parent.width
           wrapMode: Text.WordWrap
           text: root.period === "14d" ? "Unique is GitHub's own count for its latest 14 days."
-              : "Unique adds up GitHub's 14-day counts block by block, so no one is counted twice within 14 days. Tap ? for how."
+              : "Unique: GitHub's 14-day number when tracking started, plus each new day's unique people. Tap ? for more."
           color: root.dim
           font.family: root.ff; font.pixelSize: Style.font.caption
         }
@@ -696,8 +696,8 @@ Item {
           HelpStep { n: "·"; body: "Clones: git clones of the repo, which includes every omarchy plugin add and update." }
           HelpStep { n: "·"; body: "Repo views: visits to the repo's pages on GitHub." }
           HelpStep { n: "·"; body: "Listing views, copies, hearts: your marketplace listing's own counts. Copies are clicks on its copy-install button." }
-          HelpStep { n: "·"; body: "Unique: different people. GitHub only counts them over 14 days, so all time adds up back-to-back 14-day blocks from the day you started tracking (100 in the first block + 20 in the next = 120). Someone who returns in a later block counts again, like on GitHub's page. The current block's number only rises and lands on GitHub's count when the block ends." }
-          HelpStep { n: "·"; body: "Clone and view totals add up day by day, each day counted once, however often the plugin checks." }
+          HelpStep { n: "·"; body: "Unique: different people, as GitHub counts them. Lifetime starts with GitHub's 14-day number when you start tracking, then adds each new day's unique number (100 at the start + 20 over the next days = 120). 14 days shows GitHub's own number, the same as its traffic page." }
+          HelpStep { n: "·"; body: "GitHub's window rolls: each day a new day comes in and the oldest drops out. Every day is saved before it drops out, so nothing is lost unless the computer is off for more than 14 days in a row (the dropdown then says which days)." }
           HelpStep { n: "·"; body: "Read-only: GitHub files traffic under \"administration\". The app can't change anything, and you can revoke it in GitHub → Settings → Applications." }
         }
 

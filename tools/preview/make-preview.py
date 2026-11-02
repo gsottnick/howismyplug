@@ -55,11 +55,10 @@ def fake_world():
 
 
 def history(seen):
-    # Two finished 14-day blocks before the current window (anchor 42 days back).
+    # Tracked for six weeks: GitHub's 14-day number at the first check, then saved days.
     old = {day(-14 - i): [25, 7] for i in range(28)}
-    anchor = day(-41)
-    clones = {"days": old, "anchor": anchor, "ends": {day(-28): [58, 7], day(-14): [64, 7]}, "lb": {}}
-    views = {"days": {d: [60, 12] for d in old}, "anchor": anchor, "ends": {day(-28): [97, 12], day(-14): [102, 12]}, "lb": {}}
+    clones = {"days": old, "first": {"uniques": 58, "end": day(-28)}}
+    views = {"days": {d: [60, 12] for d in old}, "first": {"uniques": 97, "end": day(-28)}}
     return {"seen": seen, "repos": [
         {"repo": "octo/weather-plug", "addedAt": 1, "clones": clones, "views": views},
         {"repo": "octo/lofi-bar", "addedAt": 1},

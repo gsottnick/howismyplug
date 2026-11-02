@@ -198,113 +198,47 @@ function trafficFor(series, period, today) {
 }
 
 // ── unique people over time ───────────────────────────────────────────
-// GitHub only counts different people exactly over its 14-day window (which
-// can end a day or two before today). Lifetime unique is the sum of
-// back-to-back 14-day blocks from the first day tracked (the anchor), each
-// block's number being GitHub's own count for exactly that window. Someone
-// who returns in a later block counts again, as on GitHub's page; no one is
-// counted twice within a block. The block in progress shows a proven lower
-// bound that only rises and becomes GitHub's count when the block completes.
-
-var BLOCK_DAYS = 14
-var HOUR_MS = 3600000
+// GitHub shows unique cloners (or visitors) per day, and for its latest 14
+// days as a whole. Lifetime unique = GitHub's 14-day number from the first
+// check, plus each later day's unique number. GitHub's window rolls (a day
+// in, a day out), and every day is stored before it drops out, so nothing is
+// lost unless no check happens for more than 14 days.
 
 function dayIndex(day) { return Math.round(Date.parse(day + "T00:00:00Z") / DAY_MS) }
 function dayFromIndex(i) { return dayKey(i * DAY_MS) }
-function blockOf(anchor, day) { return Math.floor((dayIndex(day) - dayIndex(anchor)) / BLOCK_DAYS) }
-function blockStart(anchor, k) { return dayFromIndex(dayIndex(anchor) + k * BLOCK_DAYS) }
-function blockEnd(anchor, k) { return dayFromIndex(dayIndex(anchor) + k * BLOCK_DAYS + BLOCK_DAYS - 1) }
-
-function dailyUniques(series, day) { var v = series.days[day]; return v ? v[1] : 0 }
-
-// At least this many different people came on days [from, to]: the busiest
-// single day, and, if those days sit inside GitHub's latest window, its count
-// minus everyone who could have come only on the window's other days.
-function lowerBound(series, from, to) {
-  var a = dayIndex(from), b = dayIndex(to), best = 0, i
-  for (i = a; i <= b; i++) best = Math.max(best, dailyUniques(series, dayFromIndex(i)))
-  var w = series.last14
-  if (w && w.end) {
-    var we = dayIndex(w.end), ws = we - (BLOCK_DAYS - 1)
-    if (a >= ws && b <= we) {
-      var others = 0
-      for (i = ws; i <= we; i++) if (i < a || i > b) others += dailyUniques(series, dayFromIndex(i))
-      best = Math.max(best, w.uniques - others)
-    }
-  }
-  return best
-}
-
-// A finished block: GitHub's own count from the latest reading of the window
-// that ends on its last day. Nothing is added to it: people who came later
-// that day can't be told apart from people already counted, so adding them
-// could count someone twice. With GitHub a day or more behind, that reading
-// came after the day was over and is exact; with GitHub on today, the plugin
-// checks at 23:55 UTC so at most the block's last minutes are missing.
-// Without such a reading (computer off), the best proven lower bound.
-function blockValue(series, k) {
-  var end = blockEnd(series.anchor, k)
-  var r = series.ends ? series.ends[end] : null
-  var floor = Math.max((series.lb && series.lb[k]) || 0, lowerBound(series, blockStart(series.anchor, k), end))
-  return r ? Math.max(r[0], floor) : floor
-}
 
 function uniquesFor(series, period, today) {
-  if (!series || !series.anchor || !series.last14 || !series.last14.end) return 0
-  if (period === "14d") return series.last14.uniques
-  var last = series.last14.end
+  if (!series || !series.last14) return 0
+  if (period === "14d") return series.last14.uniques       // exactly GitHub's "in last 14 days"
+  var first = series.first
   var start = periodStart(period, today)
-  var from = !start || start < series.anchor ? series.anchor : start
-  if (from > last) return 0
-  var K = blockOf(series.anchor, last), total = 0
-  for (var k = blockOf(series.anchor, from); k <= K; k++) {
-    var bs = blockStart(series.anchor, k), be = blockEnd(series.anchor, k)
-    var lo = bs < from ? from : bs, hi = be > last ? last : be
-    if (lo === bs && hi === be) total += blockValue(series, k)
-    else if (lo === bs && k === K) total += Math.max((series.lb && series.lb[k]) || 0, lowerBound(series, lo, hi))
-    else total += lowerBound(series, lo, hi)
+  var firstStart = first ? dayFromIndex(dayIndex(first.end) - 13) : ""
+  var total = 0, inFirst = 0
+  for (var d in series.days) {
+    if (start && d < start) continue
+    if (first && d <= first.end) inFirst += series.days[d][1]
+    else total += series.days[d][1]
   }
+  // The first 14 days count as GitHub's own number for them; a period that
+  // only covers part of them can't count more than that.
+  if (first) total += !start || start <= firstStart ? first.uniques : Math.min(inFirst, first.uniques)
   return total
 }
 
 // Store one GitHub traffic answer (parseTraffic's result) in a series.
 function recordTraffic(series, t, now) {
   var old = series || { days: {} }
-  var days = mergeDays(old.days || {}, t.days)
   var keys = Object.keys(t.days).sort()
-  if (keys.length === 0) return { days: days, last14: old.last14 || null, anchor: old.anchor || "", ends: old.ends || {}, lb: old.lb || {} }
+  var out = { days: mergeDays(old.days || {}, t.days), last14: old.last14 || null, first: old.first || null }
+  if (keys.length === 0) return out
   var end = keys[keys.length - 1]
-  var anchor = old.anchor || dayFromIndex(dayIndex(end) - (BLOCK_DAYS - 1))
-  var out = { days: days, anchor: anchor, last14: { count: t.count, uniques: t.uniques, end: end }, ends: {}, lb: {} }
-  var k, d
-  for (d in (old.ends || {})) out.ends[d] = old.ends[d]
-  for (k in (old.lb || {})) out.lb[k] = old.lb[k]
-  // The latest reading of a window is the most complete one.
-  var prev = out.ends[end]
-  if (!prev || t.uniques >= prev[0]) out.ends[end] = [t.uniques, t.days[end][1]]
-  // The block in progress: remember the best proven lower bound, never lower it.
-  var K = blockOf(anchor, end)
-  if (K >= 0) out.lb[K] = Math.max(out.lb[K] || 0, lowerBound(out, blockStart(anchor, K), end))
-  // Only block ends and the last two weeks of readings matter.
-  for (d in out.ends) {
-    var off = dayIndex(d) - dayIndex(anchor)
-    if (off % BLOCK_DAYS !== BLOCK_DAYS - 1 && dayIndex(end) - dayIndex(d) > BLOCK_DAYS) delete out.ends[d]
-  }
+  out.last14 = { count: t.count, uniques: t.uniques, end: end }
+  // The window seen at the first check is where lifetime counting starts.
+  if (!out.first) out.first = { uniques: t.uniques, end: end }
+  // A later reading of that same window (its last day still growing) is more complete.
+  else if (out.first.end === end && t.uniques > out.first.uniques) out.first = { uniques: t.uniques, end: end }
   return out
 }
-
-// When the block GitHub is in finishes, its last day needs a reading as late
-// as possible. From the start of that day (UTC, GitHub's days) the repo is
-// checked hourly until GitHub's window moves past it, plus once at 23:55,
-// whatever the repo's own schedule is.
-// -> the time that watch starts, or 0 if there is nothing to watch yet.
-function boundaryAt(series) {
-  if (!series || !series.anchor || !series.last14 || !series.last14.end) return 0
-  var be = blockEnd(series.anchor, blockOf(series.anchor, series.last14.end))
-  return Date.parse(be + "T00:00:00Z")
-}
-
-var LATE_CHECK_MS = 23 * 3600000 + 55 * 60000
 
 // Marketplace counts are lifetime. A period shows the growth since the last
 // snapshot taken before the period started.
@@ -416,21 +350,15 @@ function cleanSeries(s) {
     }
   }
   var keys = Object.keys(days).sort()
-  var out = { days: days, anchor: "", last14: null, ends: {}, lb: {} }
+  var out = { days: days, last14: null, first: null }
   if (isObject(s.last14)) {
     // Older files kept the check's date instead of the window's last day.
     var end = isoDay(text(s.last14.end) + "T") ? s.last14.end : (keys.length ? keys[keys.length - 1] : "")
     if (end) out.last14 = { count: safeCount(s.last14.count), uniques: safeCount(s.last14.uniques), end: end }
   }
-  if (isoDay(text(s.anchor) + "T")) out.anchor = s.anchor
-  else if (out.last14) out.anchor = dayFromIndex(dayIndex(out.last14.end) - (BLOCK_DAYS - 1))   // the first window's first day
-  if (isObject(s.ends)) for (k in s.ends) {
-    var e = s.ends[k]
-    if (isoDay(k + "T") && Array.isArray(e)) out.ends[k] = [safeCount(e[0]), safeCount(e[1])]
-  }
-  if (out.last14 && !out.ends[out.last14.end] && !isObject(s.ends))
-    out.ends[out.last14.end] = [out.last14.uniques, days[out.last14.end] ? days[out.last14.end][1] : 0]
-  if (isObject(s.lb)) for (k in s.lb) if (/^\d{1,6}$/.test(k)) out.lb[k] = safeCount(s.lb[k])
+  if (isObject(s.first) && isoDay(text(s.first.end) + "T")) out.first = { uniques: safeCount(s.first.uniques), end: s.first.end }
+  // Files from before: lifetime counting starts from the latest 14-day number they kept.
+  else if (out.last14) out.first = { uniques: out.last14.uniques, end: out.last14.end }
   return out
 }
 
@@ -510,18 +438,7 @@ function cleanState(raw) {
 
 // Repos whose GitHub traffic (kind "github") or listing ("listing") is due.
 function githubDelay(r, now) {
-  var d = pollDelay(r.lastGithub, r.checkGithub, now)
-  var starts = [boundaryAt(r.clones), boundaryAt(r.views)].filter(function(t) { return t > 0 })
-  for (var i = 0; i < starts.length; i++) {
-    var start = starts[i], late = start + LATE_CHECK_MS
-    if (now < start) d = Math.min(d, start - now)
-    else {
-      d = Math.min(d, pollDelay(r.lastGithub, "hourly", now))
-      // The 23:55 check on the block's last day, unless one already happened.
-      if (r.lastGithub < late) d = Math.min(d, Math.max(0, late - now))
-    }
-  }
-  return d
+  return pollDelay(r.lastGithub, r.checkGithub, now)
 }
 
 function dueRepos(repos, kind, now) {
