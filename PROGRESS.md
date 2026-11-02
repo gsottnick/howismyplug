@@ -27,7 +27,7 @@ Plan: `~/.claude/plans/can-we-make-an-melodic-wind.md`. Work on branch `first-bu
 - [x] Live check of 0.2.0 in Gavin's bar (2026-11-02, Omarchy 4.5.0rc3): numbers match GitHub exactly; fixed a
       new repo's ran-ahead first window (79256f3) and 14d = GitHub's window (40b4d76); refresh replays the
       reveal (bd60f2e). GLM: "Nothing left to change" at bd60f2e.
-- [ ] Gavin: click through repo / settings / help pages on 4.5.0rc3 (couldn't click from Claude's side)
+- [x] Gavin clicked through repo / settings / help pages and refresh on 4.5.0rc3: nothing looked off (2026-11-02)
 - [ ] Local panel tests: installed Omarchy 4.5.0rc3 breaks the harness (new Commons types); use OMARCHY_SHELL=<v4.0.6 shell/>
 - [x] Live test in Gavin's bar (2026-11-01): signed in via the app, omatuple matches GitHub (551/152 clones,
       165/4 views); token only in the keyring (not in history.json, shell.json, any /proc cmdline, or the shell log).
