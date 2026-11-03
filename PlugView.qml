@@ -85,7 +85,7 @@ Item {
       var cN = root.mode === "unique" ? c.uniques : c.count
       var vN = root.mode === "unique" ? v.uniques : v.count
       parts.push(Model.grouped(cN) + (root.mode === "unique" ? " " + root.uniqueWords("clones") : " clones"),
-                 Model.grouped(vN) + (root.mode === "unique" ? " " + root.uniqueWords("views") : " views"))
+                 Model.grouped(vN) + (root.mode === "unique" ? " " + root.uniqueWords("repo views") : " repo views"))
     } else parts.push("waiting for GitHub")
     if (r.market) parts.push(Model.grouped(Model.marketFor(r.market, root.period, root.today).views) + " listing views")
     return parts.join("  ·  ")
@@ -357,9 +357,9 @@ Item {
                 width: parent.width
                 text: root.rowLine(modelData)
                 textFormat: Text.PlainText
-                // "unique clones per day" is wider than this row. Wrap that case so listing views stay visible.
-                wrapMode: root.mode === "unique" && root.period !== "14d" ? Text.WordWrap : Text.NoWrap
-                elide: root.mode === "unique" && root.period !== "14d" ? Text.ElideNone : Text.ElideRight
+                // The column is narrower than clones, repo views, and listing views. Wrap so the listing number stays.
+                wrapMode: Text.WordWrap
+                elide: Text.ElideNone
                 color: (modelData.access === "denied" || modelData.access === "missing") ? Color.urgent : root.dim
                 font.family: root.ff; font.pixelSize: Style.font.bodySmall
               }
