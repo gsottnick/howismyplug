@@ -40,7 +40,7 @@ Current work is PR #4, branch `release-1.0`. PRs only; Gavin merges.
 - [ ] Marketplace submission (show Gavin the exact text first; do not file it without an explicit yes)
 - [x] Fixes on PR #4 (2026-11-02): milestones store the count last seen (`seenValue`), not a step index, so changing the step or the stat does not celebrate something already passed. Old `seen` indexes are dropped and the next look is quiet. Unique-only repo rows say "unique clones" / "unique views". A repo the app cannot see shows "—" and "needs access" on its own page; the overview still shows numbers. The first check records `lastPoll`, so the footer is not "Checked never".
 - [x] Highlight colour, checked in the harness: help step numbers, the ? button and the milestone card follow it (theme blue vs urgent pink). The selected period chip does not; Omarchy paints that with the theme's selected colour, which tokyo-night sets to the text colour.
-- [ ] Gavin's call, not changed: 7-day unique can be higher than 14-day unique, because 14 days is GitHub's count of different people and the other periods add each day's unique number. Options: leave it (the dropdown note says so), cap 7-day at the 14-day number, or label the others "unique per day".
+- [x] 7-day unique can be higher than 14-day unique. The math is unchanged: 14 days is GitHub's count of different people, and the other periods add each day's unique number. Those periods are labelled "unique per day". Not capped.
 - [ ] Live check in Gavin's bar after he merges, only while unlocked, and only with his OK to restart. The installed copy is still `first-build` at bd60f2e.
 - [ ] Tag v1.0.0 on the merged main commit after that check.
 

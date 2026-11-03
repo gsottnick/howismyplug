@@ -303,7 +303,7 @@ class PanelTest(unittest.TestCase):
         overview = h.after(2)
         self.assertEqual(overview["view"]["page"], "overview")
         self.assertEqual(overview["view"]["tilesText"]["clones"], "0", "combined tiles stay numbers")
-        self.assertEqual(overview["view"]["tilesText"]["clonesSub"], "0 unique")
+        self.assertEqual(overview["view"]["tilesText"]["clonesSub"], "0 unique per day")
         denied = h.after(3)
         self.assertEqual(denied["view"]["tilesText"]["clones"], "—")
         self.assertEqual(denied["view"]["tilesText"]["clonesSub"], "needs access")
@@ -414,10 +414,20 @@ class PanelTest(unittest.TestCase):
     def test_unique_only_labels_repo_rows_as_unique(self):
         h = self.harness()
         h.sign_in_with_keyring()
-        s = h.run(["track:octo/plug", "wait:1500"], settings={"countMode": "unique"})
-        self.assertEqual(s["view"]["rowLines"], [
-            "4 unique clones  ·  5 unique views  ·  71 listing views",
+        s = h.run(["track:octo/plug", "wait:1500", "period:14d"], settings={"countMode": "unique"})
+        # All time adds each day's unique people. 14 days is GitHub's count of different people.
+        # A fresh repo has the same number either way; only the words change.
+        all_time = h.after(1)
+        self.assertEqual(all_time["view"]["rowLines"], [
+            "4 unique clones per day  ·  5 unique views per day  ·  71 listing views",
         ])
+        self.assertEqual(all_time["view"]["tilesText"]["clonesSub"], "unique per day")
+        self.assertEqual(all_time["view"]["tilesText"]["viewsSub"], "unique per day")
+        self.assertEqual(s["view"]["rowLines"], [
+            "4 unique clones  ·  5 unique views  ·  0 listing views",
+        ], "14-day listing views are growth inside the window")
+        self.assertEqual(s["view"]["tilesText"]["clonesSub"], "unique")
+        self.assertEqual(s["view"]["tilesText"]["viewsSub"], "unique")
 
     def test_the_first_check_is_not_never(self):
         h = self.harness()

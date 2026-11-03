@@ -82,9 +82,10 @@ Item {
     else if (!PlugStore.signedIn) parts.push("sign in for clones")
     else if (r.clones) {
       var c = Model.trafficFor(r.clones, root.period, root.today), v = Model.trafficFor(r.views, root.period, root.today)
-      var kind = root.mode === "unique" ? " unique " : " "
-      parts.push(Model.grouped(root.mode === "unique" ? c.uniques : c.count) + kind + "clones",
-                 Model.grouped(root.mode === "unique" ? v.uniques : v.count) + kind + "views")
+      var cN = root.mode === "unique" ? c.uniques : c.count
+      var vN = root.mode === "unique" ? v.uniques : v.count
+      parts.push(Model.grouped(cN) + (root.mode === "unique" ? " " + root.uniqueWords("clones") : " clones"),
+                 Model.grouped(vN) + (root.mode === "unique" ? " " + root.uniqueWords("views") : " views"))
     } else parts.push("waiting for GitHub")
     if (r.market) parts.push(Model.grouped(Model.marketFor(r.market, root.period, root.today).views) + " listing views")
     return parts.join("  ·  ")
@@ -95,7 +96,13 @@ Item {
     return root.page === "repo" && !!root.repo && (root.repo.access === "denied" || root.repo.access === "missing")
   }
 
-  // Tile numbers: the big one follows the count mode, "N unique" goes under it.
+  // 14 days is GitHub's count of different people. Every other period adds each day's unique number.
+  function uniqueWords(noun) {
+    var base = noun ? "unique " + noun : "unique"
+    return root.period === "14d" ? base : base + " per day"
+  }
+
+  // Tile numbers: the big one follows the count mode, the unique wording goes under it.
   function big(t) {
     if (repoNeedsAccess() || (!PlugStore.signedIn && t.count === 0)) return "—"
     return Model.grouped(root.mode === "unique" ? t.uniques : t.count)
@@ -103,7 +110,9 @@ Item {
   function sub(t) {
     if (repoNeedsAccess()) return "needs access"
     if (!PlugStore.signedIn && t.count === 0) return "sign in to track"
-    return root.mode === "both" ? Model.grouped(t.uniques) + " unique" : (root.mode === "unique" ? "unique" : "")
+    if (root.mode === "both") return Model.grouped(t.uniques) + " " + root.uniqueWords("")
+    if (root.mode === "unique") return root.uniqueWords("")
+    return ""
   }
 
   function addRepo() {
@@ -298,8 +307,8 @@ Item {
           visible: root.hasRepos && root.mode !== "total" && PlugStore.signedIn && (root.page === "overview" || root.page === "repo")
           width: parent.width
           wrapMode: Text.WordWrap
-          text: root.period === "14d" ? "Unique is GitHub's own count for its latest 14 days."
-              : "Unique: GitHub's 14-day number when tracking started, plus each new day's unique people. Tap ? for more."
+          text: root.period === "14d" ? "Unique is GitHub's count of different people for these 14 days."
+              : "Unique per day: each day's unique people, added up. One person on several days counts more than once. Tap ? for more."
           color: root.dim
           font.family: root.ff; font.pixelSize: Style.font.caption
         }
@@ -348,7 +357,9 @@ Item {
                 width: parent.width
                 text: root.rowLine(modelData)
                 textFormat: Text.PlainText
-                elide: Text.ElideRight
+                // "unique clones per day" is wider than this row. Wrap that case so listing views stay visible.
+                wrapMode: root.mode === "unique" && root.period !== "14d" ? Text.WordWrap : Text.NoWrap
+                elide: root.mode === "unique" && root.period !== "14d" ? Text.ElideNone : Text.ElideRight
                 color: (modelData.access === "denied" || modelData.access === "missing") ? Color.urgent : root.dim
                 font.family: root.ff; font.pixelSize: Style.font.bodySmall
               }
@@ -716,7 +727,7 @@ Item {
           HelpStep { n: "·"; body: "Clones: git clones of the repo, which includes every omarchy plugin add and update." }
           HelpStep { n: "·"; body: "Repo views: visits to the repo's pages on GitHub." }
           HelpStep { n: "·"; body: "Listing views, copies, hearts: your marketplace listing's own counts. Copies are clicks on its copy-install button." }
-          HelpStep { n: "·"; body: "Unique: different people, as GitHub counts them. Lifetime starts with GitHub's 14-day number when you start tracking, then adds each new day's unique number (100 at the start + 20 over the next days = 120). 14 days shows GitHub's own number, the same as its traffic page." }
+          HelpStep { n: "·"; body: "Unique: 14 days is GitHub's count of different people, the same as its traffic page. 7 days and 30 days add each day's unique people, so someone on several days counts more than once. All time starts with GitHub's 14-day number when you start tracking, then adds each new day's unique number (100 at the start + 20 over the next days = 120)." }
           HelpStep { n: "·"; body: "GitHub's window rolls: each day a new day comes in and the oldest drops out. Every day is saved before it drops out, so nothing is lost unless the computer is off for more than 14 days in a row (the dropdown then says which days)." }
           HelpStep { n: "·"; body: "Read-only: GitHub files traffic under \"administration\". The app can't change anything, and you can revoke it in GitHub → Settings → Applications." }
         }
@@ -947,6 +958,8 @@ Item {
         }
         Text {
           visible: modelData.sub !== ""
+          width: parent.width
+          wrapMode: Text.WordWrap
           text: modelData.sub
           color: root.dim
           font.family: root.ff; font.pixelSize: Style.font.caption
