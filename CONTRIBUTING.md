@@ -21,10 +21,11 @@ omarchy plugin validate .
   never touches a real account or keyring. It checks where the token goes, too.
 
 The panel tests load Omarchy's shell components from `/usr/share/omarchy/shell`, or from
-`OMARCHY_SHELL` (a checkout's `shell/` folder). CI runs them on every Omarchy listed in `OMARCHY_REFS`
-(`.github/workflows/tests.yml`): the plugin adapts to each (Omarchy 4.5 draws bar labels itself and has
-a system-wide animation switch; 4.0.x doesn't), and `tests/panel_test.py` checks both paths. PySide6 must stay below 6.12 (Qt 6.12's `Color`
-shadows Omarchy's in the harness).
+`OMARCHY_SHELL` (a checkout's `shell/` folder). CI runs them on the releases in `OMARCHY_REFS`
+(`.github/workflows/tests.yml`). Right now that is Omarchy 4.0.6, the current stable release, and
+Omarchy 4.5.0-rc3, the current 4.5 prerelease. The plugin adapts to each: 4.5 draws bar labels itself
+and has a system-wide animation switch; 4.0.6 does not. `tests/panel_test.py` checks both paths.
+PySide6 must stay below 6.12 (Qt 6.12's `Color` shadows Omarchy's in the harness).
 
 ## Preview
 
@@ -33,5 +34,14 @@ real dropdown with made-up repos and numbers. Needs chromium.
 
 ## Releasing
 
-Bump `version` in `manifest.json`, merge, tag a GitHub release at the merge commit, then send the
-marketplace's update form ("Verify and publish a newer upstream commit") with the full commit SHA.
+Bump `version` in `manifest.json` and merge. Tag a GitHub release at the full 40-character SHA of
+that commit on `main`.
+
+The first marketplace listing is a submission issue on `omacom/omarchy-plugin-marketplace`. The title
+is `[Plugin]: HowIsMyPlug?`. The body keeps the six headings and the five checklist lines from that
+repo's `SUBMISSION.md`, in that order, with every box checked. Category is `Developer Tools`. Tags are
+`bar` and `quickshell`.
+
+A later version uses the marketplace update form ("Verify and publish a newer upstream commit") with
+this plugin's id, the repository root URL, and the full SHA of current `main`. A commit that lands on
+`main` after a listing shows "Update unverified" until that form is approved.
