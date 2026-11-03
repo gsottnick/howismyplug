@@ -297,7 +297,22 @@ class PanelTest(unittest.TestCase):
         self.fake.repos["octo/private"] = {"manifest": None, "access": False}
         h = self.harness()
         h.sign_in_with_keyring()
-        s = h.run(["track:octo/private", "wait:1200", "open-repo:octo/private", "click:giveAccessButton"])
+        s = h.run(["track:octo/private", "track:octo/gone", "wait:1500",
+                   "open-repo:octo/private", "open-repo:octo/gone",
+                   "open-repo:octo/private", "click:giveAccessButton"])
+        overview = h.after(2)
+        self.assertEqual(overview["view"]["page"], "overview")
+        self.assertEqual(overview["view"]["tilesText"]["clones"], "0", "combined tiles stay numbers")
+        self.assertEqual(overview["view"]["tilesText"]["clonesSub"], "0 unique")
+        denied = h.after(3)
+        self.assertEqual(denied["view"]["tilesText"]["clones"], "—")
+        self.assertEqual(denied["view"]["tilesText"]["clonesSub"], "needs access")
+        self.assertEqual(denied["view"]["tilesText"]["views"], "—")
+        self.assertEqual(denied["view"]["tilesText"]["viewsSub"], "needs access")
+        missing = h.after(4)
+        self.assertEqual(missing["state"]["repos"][1]["access"], "missing")
+        self.assertEqual(missing["view"]["tilesText"]["clones"], "—")
+        self.assertEqual(missing["view"]["tilesText"]["viewsSub"], "needs access")
         repo = s["state"]["repos"][0]
         self.assertEqual(repo["access"], "denied")
         self.assertTrue(repo["idChecked"])
@@ -334,7 +349,7 @@ class PanelTest(unittest.TestCase):
 
     def test_milestone_shows_once_when_the_dropdown_opens(self):
         h = self.harness()
-        h.seed({"seen": {"clones": 0}, "repos": [{"repo": "octo/plug", "pluginId": "io.github.octo.plug", "idChecked": True,
+        h.seed({"seenValue": {"clones": 0}, "repos": [{"repo": "octo/plug", "pluginId": "io.github.octo.plug", "idChecked": True,
                  "clones": {"days": {day(-40): [250, 30]}}}]})
         s = h.run(["wait:300", "close", "open", "wait:600", "close", "open", "wait:300"], settings={"milestoneStep": 100}, extra=["--closed"])
         before = h.after(0)
@@ -344,8 +359,8 @@ class PanelTest(unittest.TestCase):
         self.assertTrue(shown["view"]["cardVisible"])
         self.assertTrue(shown["view"]["confetti"], "confetti with animations on")
         self.assertEqual(shown["view"]["shown"], {"repo": "", "metric": "clones", "value": 200}, "the combined milestone")
-        self.assertEqual(s["state"]["seen"]["clones"], 2)
-        self.assertEqual(s["state"]["repos"][0]["seen"]["clones"], 2, "the repo's own milestone, first seen: recorded silently")
+        self.assertEqual(s["state"]["seenValue"]["clones"], 250)
+        self.assertEqual(s["state"]["repos"][0]["seenValue"]["clones"], 250, "the repo's own milestone, first seen: recorded silently")
         self.assertFalse(s["panel"]["milestonePending"])
         self.assertFalse(s["view"]["cardVisible"], "not shown again")
 
@@ -353,13 +368,13 @@ class PanelTest(unittest.TestCase):
         h = self.harness()
         h.seed({"repos": [{"repo": "octo/plug", "idChecked": True, "clones": {"days": {day(-40): [250, 30]}}}]})
         s = h.run(["wait:600"])
-        self.assertEqual(s["state"]["seen"]["clones"], 2)
-        self.assertEqual(s["state"]["repos"][0]["seen"]["clones"], 2)
+        self.assertEqual(s["state"]["seenValue"]["clones"], 250)
+        self.assertEqual(s["state"]["repos"][0]["seenValue"]["clones"], 250)
         self.assertFalse(s["view"]["cardVisible"])
 
     def test_animations_off_still_announces_milestones(self):
         h = self.harness()
-        h.seed({"seen": {"clones": 1}, "repos": [{"repo": "octo/plug", "idChecked": True, "clones": {"days": {day(-40): [250, 30]}}}]})
+        h.seed({"seenValue": {"clones": 100}, "repos": [{"repo": "octo/plug", "idChecked": True, "clones": {"days": {day(-40): [250, 30]}}}]})
         s = h.run(["wait:400"], settings={"animations": False})
         self.assertFalse(s["panel"]["disco"])
         self.assertTrue(s["view"]["cardVisible"])
@@ -367,13 +382,48 @@ class PanelTest(unittest.TestCase):
 
     def test_a_repo_celebrates_its_own_milestone_and_combined_can_be_off(self):
         h = self.harness()
-        h.seed({"seen": {"clones": 0}, "repos": [
-            {"repo": "octo/plug", "idChecked": True, "milestone": {"on": True, "metric": "clones", "step": 50}, "seen": {"clones": 1},
+        h.seed({"seenValue": {"clones": 0}, "repos": [
+            {"repo": "octo/plug", "idChecked": True, "milestone": {"on": True, "metric": "clones", "step": 50}, "seenValue": {"clones": 50},
              "clones": {"days": {day(-40): [120, 30]}}}]})
         s = h.run(["wait:400"], settings={"combinedMilestones": False})
         self.assertTrue(s["view"]["cardVisible"])
         self.assertEqual(s["view"]["shown"], {"repo": "octo/plug", "metric": "clones", "value": 100})
-        self.assertEqual(s["state"]["seen"]["clones"], 0, "combined off: its count is left alone")
+        self.assertEqual(s["state"]["seenValue"]["clones"], 0, "combined off: its count is left alone")
+        self.assertEqual(s["state"]["repos"][0]["seenValue"]["clones"], 120)
+
+    def test_a_smaller_step_or_another_stat_does_not_celebrate(self):
+        h = self.harness()
+        day0 = day(-40)
+        h.seed({"repos": [{
+            "repo": "octo/plug", "idChecked": True,
+            "milestone": {"on": True, "metric": "clones", "step": 100},
+            "seenValue": {"clones": 250},
+            "clones": {"days": {day0: [250, 80]}, "last14": {"count": 250, "uniques": 80, "end": day0},
+                       "first": {"uniques": 80, "end": day0}},
+        }]})
+        s = h.run(["wait:400", "open-repo:octo/plug", "number:repoMilestoneStep=25", "wait:400",
+                   "choose:repoMilestoneMetric=uniqueClones", "wait:400"],
+                  settings={"combinedMilestones": False})
+        mid = h.after(3)
+        self.assertFalse(mid["view"]["cardVisible"])
+        self.assertEqual(mid["state"]["repos"][0]["seenValue"], {"clones": 250})
+        self.assertFalse(s["view"]["cardVisible"])
+        self.assertFalse(s["panel"]["milestonePending"])
+        self.assertEqual(s["state"]["repos"][0]["seenValue"], {"clones": 250, "uniqueClones": 80})
+
+    def test_unique_only_labels_repo_rows_as_unique(self):
+        h = self.harness()
+        h.sign_in_with_keyring()
+        s = h.run(["track:octo/plug", "wait:1500"], settings={"countMode": "unique"})
+        self.assertEqual(s["view"]["rowLines"], [
+            "4 unique clones  ·  5 unique views  ·  71 listing views",
+        ])
+
+    def test_the_first_check_is_not_never(self):
+        h = self.harness()
+        s = h.run(["track:octo/plug", "wait:1500"])
+        self.assertEqual(s["state"]["repos"][0]["market"]["current"]["views"], 71)
+        self.assertGreater(s["state"]["lastPoll"], 0)
 
     def test_a_failed_plugin_id_lookup_is_retried(self):
         h = self.harness()

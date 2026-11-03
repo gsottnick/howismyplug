@@ -88,7 +88,7 @@ STORE_PROPS = (
     "pollEvery",
 )
 PANEL_PROPS = ("nativeLabel", "width", "height", "opened", "period", "countMode", "barStat", "barText", "barValue", "milestonePending", "disco", "animations")
-VIEW_PROPS = ("reveals", "page", "currentRepo", "shown", "codeCopied", "repoError", "tokenError", "tokenMode", "cardOpacity", "editing")
+VIEW_PROPS = ("reveals", "page", "currentRepo", "shown", "codeCopied", "repoError", "tokenError", "tokenMode", "cardOpacity", "editing", "rowLines", "tilesText")
 
 # URLs the plugin asked the desktop to open, recorded instead of opened.
 OPENED: list[str] = []

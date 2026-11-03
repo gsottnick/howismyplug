@@ -105,15 +105,15 @@ Singleton {
     schedule()
   }
 
-  // Milestones due now (see Model.milestoneCheck); records them as seen and
-  // returns the ones to celebrate.
+  // Milestones due now (see Model.milestoneCheck); records the counts last
+  // seen and returns the ones to celebrate.
   function takeMilestones(combined) {
-    var r = Model.milestoneCheck(state.repos, combined, state.seen, Model.dayKey(Date.now()))
+    var r = Model.milestoneCheck(state.repos, combined, state.seenValue, Model.dayKey(Date.now()))
     var keys = Object.keys(r.seen)
     if (keys.length > 0) {
       var s = copyState()
       keys.forEach(function(k) {
-        var target = k === "" ? s.seen : (Model.findRepo(s.repos, k) || {}).seen
+        var target = k === "" ? s.seenValue : (Model.findRepo(s.repos, k) || {}).seenValue
         if (target) for (var m in r.seen[k]) target[m] = r.seen[k][m]
       })
       commit(s)
@@ -288,7 +288,13 @@ Singleton {
   }
   function finish() {
     root._pending = Math.max(0, root._pending - 1)
-    if (root._pending === 0) { root.polling = false; root.now = Date.now(); saveState() }
+    if (root._pending === 0) {
+      root.polling = false
+      root.now = Date.now()
+      // Adding a repo or signing in checks through here, not pollNow/tick,
+      // so the footer would otherwise stay "Checked never" after real numbers.
+      var s = copyState(); s.lastPoll = root.now; commit(s)
+    }
   }
 
   function schedule() {

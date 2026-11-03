@@ -42,6 +42,12 @@ Item {
   onRepoChanged: if (page === "repo" && !repo) Qt.callLater(function() { if (root.page === "repo" && !root.repo) root.go("overview") })
 
   readonly property var totals: Model.totalsFor(page === "repo" && repo ? [repo] : PlugStore.repos, period, today)
+  // What the overview rows and the clone/view tiles actually say. The tests read these.
+  readonly property var rowLines: PlugStore.repos.map(function(r) { return root.rowLine(r) })
+  readonly property var tilesText: ({
+    clones: root.big(root.totals.clones), clonesSub: root.sub(root.totals.clones),
+    views: root.big(root.totals.views), viewsSub: root.sub(root.totals.views)
+  })
 
   property string repoError: ""
   property string tokenError: ""
@@ -76,19 +82,26 @@ Item {
     else if (!PlugStore.signedIn) parts.push("sign in for clones")
     else if (r.clones) {
       var c = Model.trafficFor(r.clones, root.period, root.today), v = Model.trafficFor(r.views, root.period, root.today)
-      parts.push(Model.grouped(root.mode === "unique" ? c.uniques : c.count) + " clones",
-                 Model.grouped(root.mode === "unique" ? v.uniques : v.count) + " views")
+      var kind = root.mode === "unique" ? " unique " : " "
+      parts.push(Model.grouped(root.mode === "unique" ? c.uniques : c.count) + kind + "clones",
+                 Model.grouped(root.mode === "unique" ? v.uniques : v.count) + kind + "views")
     } else parts.push("waiting for GitHub")
     if (r.market) parts.push(Model.grouped(Model.marketFor(r.market, root.period, root.today).views) + " listing views")
     return parts.join("  ·  ")
   }
 
+  // This repo's page only: the overview keeps adding every repo, including zeros.
+  function repoNeedsAccess() {
+    return root.page === "repo" && !!root.repo && (root.repo.access === "denied" || root.repo.access === "missing")
+  }
+
   // Tile numbers: the big one follows the count mode, "N unique" goes under it.
   function big(t) {
-    if (!PlugStore.signedIn && t.count === 0) return "—"
+    if (repoNeedsAccess() || (!PlugStore.signedIn && t.count === 0)) return "—"
     return Model.grouped(root.mode === "unique" ? t.uniques : t.count)
   }
   function sub(t) {
+    if (repoNeedsAccess()) return "needs access"
     if (!PlugStore.signedIn && t.count === 0) return "sign in to track"
     return root.mode === "both" ? Model.grouped(t.uniques) + " unique" : (root.mode === "unique" ? "unique" : "")
   }

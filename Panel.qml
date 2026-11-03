@@ -57,7 +57,7 @@ Panel {
 
   // A milestone crossed since the dropdown was last opened: the bar glows until then.
   readonly property bool milestonePending: PlugStore.stateLoaded
-      && Model.milestoneCheck(PlugStore.repos, combinedMilestone, PlugStore.state.seen, today).celebrations.length > 0
+      && Model.milestoneCheck(PlugStore.repos, combinedMilestone, PlugStore.state.seenValue, today).celebrations.length > 0
   readonly property bool disco: milestonePending && animations
 
   // Read straight from the settings: this runs on settingsChanged, before

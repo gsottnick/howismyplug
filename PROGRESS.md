@@ -1,6 +1,7 @@
 # Build progress (for resuming)
 
-Plan: `~/.claude/plans/can-we-make-an-melodic-wind.md`. Work on branch `first-build`, merge by PR.
+Plan: `~/.claude/plans/can-we-make-an-melodic-wind.md`. Handoff: `~/Work/plans/howismyplug-handoff.md`.
+Current work is PR #4, branch `release-1.0`. PRs only; Gavin merges.
 
 - [x] Repo created (gsottnick/howismyplug), public, "Protect main" ruleset (PRs only, Node tests + Panel tests required)
 - [x] GitHub App "HowIsMyPlug" (id 5572028, client ID Iv23liNYpgF5dSPSM5qD): Administration read, Metadata read,
@@ -23,12 +24,12 @@ Plan: `~/.claude/plans/can-we-make-an-melodic-wind.md`. Work on branch `first-bu
 - [x] Gavin changed the unique rule (2026-11-02): lifetime = GitHub's 14-day number at the first check
       + each later day's unique number; 14 days = GitHub's own number. Blocks removed (fb45a0a).
       GLM review of the new rule: one dead constant, removed (c815453); "nothing further to suggest".
-- [ ] Gavin: look at preview.png and the new pages, merge PR #2
+- [x] PR #2 merged by Gavin (e868614). PR #3 merged at cb5455e (1.0.0 prep, every-2-days).
 - [x] Live check of 0.2.0 in Gavin's bar (2026-11-02, Omarchy 4.5.0rc3): numbers match GitHub exactly; fixed a
       new repo's ran-ahead first window (79256f3) and 14d = GitHub's window (40b4d76); refresh replays the
       reveal (bd60f2e). GLM: "Nothing left to change" at bd60f2e.
 - [x] Gavin clicked through repo / settings / help pages and refresh on 4.5.0rc3: nothing looked off (2026-11-02)
-- [ ] Local panel tests: installed Omarchy 4.5.0rc3 breaks the harness (new Commons types); use OMARCHY_SHELL=<v4.0.6 shell/>
+- [x] Panel tests run on the installed Omarchy 4.5.0rc3 and on a v4.0.6 shell (PR #4). v4.0.6 skips the animation-switch test.
 - [x] Live test in Gavin's bar (2026-11-01): signed in via the app, omatuple matches GitHub (551/152 clones,
       165/4 views); token only in the keyring (not in history.json, shell.json, any /proc cmdline, or the shell log).
       Live bugs found and fixed: zero-size widget; device-flow poll stalls (20 s request timeout + retry);
@@ -36,6 +37,11 @@ Plan: `~/.claude/plans/can-we-make-an-melodic-wind.md`. Work on branch `first-bu
       example placeholder added at Gavin's request.
       Note: `qs log -f` (log follower) aborts on exit (Quickshell bug); read logs with plain `qs log -i <id>`.
 - [ ] Gavin: enable private vulnerability reporting (SECURITY.md points to it)
-- [ ] Marketplace submission (show Gavin the exact text first)
+- [ ] Marketplace submission (show Gavin the exact text first; do not file it without an explicit yes)
+- [x] Fixes on PR #4 (2026-11-02): milestones store the count last seen (`seenValue`), not a step index, so changing the step or the stat does not celebrate something already passed. Old `seen` indexes are dropped and the next look is quiet. Unique-only repo rows say "unique clones" / "unique views". A repo the app cannot see shows "—" and "needs access" on its own page; the overview still shows numbers. The first check records `lastPoll`, so the footer is not "Checked never".
+- [x] Highlight colour, checked in the harness: help step numbers, the ? button and the milestone card follow it (theme blue vs urgent pink). The selected period chip does not; Omarchy paints that with the theme's selected colour, which tokyo-night sets to the text colour.
+- [ ] Gavin's call, not changed: 7-day unique can be higher than 14-day unique, because 14 days is GitHub's count of different people and the other periods add each day's unique number. Options: leave it (the dropdown note says so), cap 7-day at the 14-day number, or label the others "unique per day".
+- [ ] Live check in Gavin's bar after he merges, only while unlocked, and only with his OK to restart. The installed copy is still `first-build` at bd60f2e.
+- [ ] Tag v1.0.0 on the merged main commit after that check.
 
 Local test venv: Omatuple's `~/Work/Omatuple/.venv-harness` works (PySide6 6.11.3).
