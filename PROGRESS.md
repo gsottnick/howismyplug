@@ -1,7 +1,8 @@
 # Build progress (for resuming)
 
 Plan: `~/.claude/plans/can-we-make-an-melodic-wind.md`. Handoff: `~/Work/plans/howismyplug-handoff.md`.
-Current work is PR #4, branch `release-1.0`. PRs only; Gavin merges.
+PR #4 is merged on `main` (`2292c62`). Next is the 1.0.0 GitHub release and the marketplace listing,
+both cut from the commit that documents the tested Omarchy versions. PRs only; Gavin merges.
 
 - [x] Repo created (gsottnick/howismyplug), public, "Protect main" ruleset (PRs only, Node tests + Panel tests required)
 - [x] GitHub App "HowIsMyPlug" (id 5572028, client ID Iv23liNYpgF5dSPSM5qD): Administration read, Metadata read,
@@ -37,11 +38,12 @@ Current work is PR #4, branch `release-1.0`. PRs only; Gavin merges.
       example placeholder added at Gavin's request.
       Note: `qs log -f` (log follower) aborts on exit (Quickshell bug); read logs with plain `qs log -i <id>`.
 - [ ] Gavin: enable private vulnerability reporting (SECURITY.md points to it)
-- [ ] Marketplace submission (show Gavin the exact text first; do not file it without an explicit yes)
+- [ ] Marketplace submission. Gavin asked to file it (2026-11-03). File it only after the version documentation is on `main`, against that full SHA, using the `SUBMISSION.md` title and body.
 - [x] Fixes on PR #4 (2026-11-02): milestones store the count last seen (`seenValue`), not a step index, so changing the step or the stat does not celebrate something already passed. Old `seen` indexes are dropped and the next look is quiet. Unique-only repo rows say "unique clones" / "unique views". A repo the app cannot see shows "—" and "needs access" on its own page; the overview still shows numbers. The first check records `lastPoll`, so the footer is not "Checked never".
 - [x] Highlight colour, checked in the harness: help step numbers, the ? button and the milestone card follow it (theme blue vs urgent pink). The selected period chip does not; Omarchy paints that with the theme's selected colour, which tokyo-night sets to the text colour.
 - [x] 7-day unique can be higher than 14-day unique. The math is unchanged: 14 days is GitHub's count of different people, and the other periods add each day's unique number. Those periods are labelled "unique per day". Not capped.
-- [ ] Live check in Gavin's bar after he merges, only while unlocked, and only with his OK to restart. The installed copy is still `first-build` at bd60f2e.
-- [ ] Tag v1.0.0 on the merged main commit after that check.
+- [x] PR #4 merged by Gavin (2292c62, 2026-11-03). Tested Omarchy versions, named in the README and CONTRIBUTING: 4.0.6 (current stable) and 4.5.0-rc3 (current 4.5 prerelease).
+- [ ] Live check of this build in Gavin's bar, only while unlocked, and only with his OK to restart. The installed copy is still `first-build` at bd60f2e.
+- [ ] Tag v1.0.0 on the main commit that includes the version documentation, then file the marketplace listing against that same full SHA.
 
 Local test venv: Omatuple's `~/Work/Omatuple/.venv-harness` works (PySide6 6.11.3).

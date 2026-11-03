@@ -95,7 +95,9 @@ To start over: Sign out in the dropdown, then delete `~/.local/state/howismyplug
 
 ## Requirements
 
-Nothing to install beyond Omarchy itself. The plugin uses what Omarchy ships:
+Nothing to install beyond Omarchy itself. This release is tested on Omarchy 4.0.6, the current stable release, and on Omarchy 4.5.0-rc3, the current 4.5 prerelease. On 4.5 the bar draws the number and follows the system animation switch. On 4.0.6 the plugin draws the number.
+
+The plugin uses what Omarchy ships:
 
 - Omarchy's shell (Quickshell) to run and to talk to GitHub and the marketplace
 - `secret-tool` (libsecret) and GNOME Keyring to keep your GitHub sign-in
