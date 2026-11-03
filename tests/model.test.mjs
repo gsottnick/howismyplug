@@ -172,10 +172,26 @@ test("totals across repos and the bar metric", () => {
 })
 
 test("milestones: silent first run, one celebration for the newest", () => {
-  assert.deepEqual(M.checkMilestone(250, 100, -1), { seen: 2, celebrate: 0 })
-  assert.deepEqual(M.checkMilestone(299, 100, 2), { seen: 2, celebrate: 0 })
-  assert.deepEqual(M.checkMilestone(512, 100, 2), { seen: 5, celebrate: 500 })
+  assert.deepEqual(M.checkMilestone(250, 100, -1), { seen: 250, celebrate: 0 })
+  assert.deepEqual(M.checkMilestone(299, 100, 250), { seen: 299, celebrate: 0 })
+  assert.deepEqual(M.checkMilestone(512, 100, 250), { seen: 512, celebrate: 500 })
   assert.deepEqual(M.checkMilestone(512, 0, 2), { seen: 512, celebrate: 512 }, "step is at least 1")
+})
+
+test("a new step or stat does not celebrate a count already seen", () => {
+  // An index of 2 stored against step 100 would celebrate 250 when the step became 50.
+  assert.deepEqual(M.checkMilestone(250, 50, 250), { seen: 250, celebrate: 0 })
+  assert.deepEqual(M.checkMilestone(270, 100, 250), { seen: 270, celebrate: 0 }, "growth inside the same step is remembered quietly")
+  const today = "2026-11-01"
+  const repos = [{
+    repo: "a/one",
+    clones: { days: { [today]: [250, 80] }, last14: { count: 250, uniques: 80, end: today }, first: { uniques: 80, end: today } },
+    milestone: { on: true, metric: "uniqueClones", step: 10 },
+    seenValue: { clones: 250 },
+  }]
+  const r = M.milestoneCheck(repos, { on: false, metric: "clones", step: 100 }, {}, today)
+  assert.deepEqual(r.celebrations, [])
+  assert.deepEqual(r.seen, { "a/one": { uniqueClones: 80 } }, "the new stat is recorded silently")
 })
 
 test("poll schedule and missed days", () => {
@@ -198,7 +214,7 @@ test("poll schedule and missed days", () => {
 
 test("the state file is cleaned on load", () => {
   const s = M.cleanState(JSON.stringify({
-    lastPoll: 5, authMethod: "token", seen: { clones: 3, evil: 1 },
+    lastPoll: 5, authMethod: "token", seen: { clones: 3, evil: 1 }, seenValue: { views: 12, evil: 1 },
     repos: [
       { repo: "a/b", pluginId: "io.x.y", idChecked: true, access: "ok",
         clones: { days: { "2026-11-01": [3, 1], "bad": [1, 1], "2026-11-02": "x" }, last14: { count: 3, uniques: 1 }, last14Day: "2026-11-01" },
@@ -209,7 +225,8 @@ test("the state file is cleaned on load", () => {
     ],
   }))
   assert.equal(s.authMethod, "token")
-  assert.deepEqual(s.seen, { clones: 3 })
+  assert.equal(s.seen, undefined, "an old milestone index is not reused")
+  assert.deepEqual(s.seenValue, { views: 12 })
   assert.deepEqual(s.repos.map((r) => r.repo), ["a/b", "c/d"])
   // A file from 0.1.0: the window is recovered, and lifetime counting starts from its number.
   assert.deepEqual(s.repos[0].clones, { days: { "2026-11-01": [3, 1] },
@@ -253,12 +270,14 @@ test("new repos take the defaults; stored per-repo options are cleaned", () => {
   assert.equal(r.checkGithub, "weekly")
   assert.equal(r.checkListing, "daily")
   assert.deepEqual(r.milestone, { on: true, metric: "clones", step: 100 })
+  assert.deepEqual(r.seenValue, {})
   const s = M.cleanState({ repos: [{ repo: "a/b", checkGithub: "hourly", milestone: { on: false, metric: "hearts", step: -4 },
-    seen: { copies: 3, evil: 1 }, missed: "<b>", lastGithub: 7 }] })
+    seen: { copies: 9 }, seenValue: { copies: 3, evil: 1 }, missed: "<b>", lastGithub: 7 }] })
   const c = s.repos[0]
   assert.equal(c.checkGithub, "hourly")
   assert.deepEqual(c.milestone, { on: false, metric: "hearts", step: 100 })
-  assert.deepEqual(c.seen, { copies: 3 })
+  assert.equal(c.seen, undefined)
+  assert.deepEqual(c.seenValue, { copies: 3 })
   assert.equal(c.missed, "")
   assert.equal(c.lastGithub, 7)
 })
@@ -278,15 +297,21 @@ test("the bar number: any stat, all repos or one", () => {
 
 test("milestones: per repo and combined, first sight silent, combined can be off", () => {
   const today = "2026-11-01"
-  const repo = (name, clones, milestone, seen) => ({ repo: name, clones: { days: { [today]: [clones, 1] } }, milestone, seen })
+  const repo = (name, clones, milestone, seenValue) => ({ repo: name, clones: { days: { [today]: [clones, 1] } }, milestone, seenValue })
   const repos = [
-    repo("a/one", 250, { on: true, metric: "clones", step: 100 }, { clones: 1 }),
+    repo("a/one", 250, { on: true, metric: "clones", step: 100 }, { clones: 100 }),
     repo("a/two", 40, { on: true, metric: "clones", step: 10 }, {}),
     repo("a/off", 999, { on: false, metric: "clones", step: 1 }, { clones: 0 }),
   ]
   const r = M.milestoneCheck(repos, { on: true, metric: "clones", step: 1000 }, { clones: 0 }, today)
   assert.deepEqual(r.celebrations, [{ repo: "a/one", metric: "clones", value: 200 }, { repo: "", metric: "clones", value: 1000 }])
-  assert.deepEqual(r.seen, { "a/one": { clones: 2 }, "a/two": { clones: 4 }, "": { clones: 1 } })
+  assert.deepEqual(r.seen, { "a/one": { clones: 250 }, "a/two": { clones: 40 }, "": { clones: 1289 } })
   const off = M.milestoneCheck(repos, { on: false, metric: "clones", step: 1000 }, { clones: 0 }, today)
   assert.ok(!off.celebrations.some((c) => c.repo === ""), "combined off: no combined milestone")
+  // A file from before stored the milestone index. It is ignored, so the next look is quiet.
+  const legacy = M.cleanState({ repos: [{ repo: "a/b", seen: { clones: 1 }, clones: { days: { [today]: [250, 1] } } }] })
+  assert.deepEqual(legacy.repos[0].seenValue, {})
+  const quiet = M.milestoneCheck(legacy.repos, { on: false }, {}, today)
+  assert.deepEqual(quiet.celebrations, [])
+  assert.deepEqual(quiet.seen, { "a/b": { clones: 250 } })
 })

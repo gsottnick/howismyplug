@@ -34,6 +34,11 @@ sys.path.insert(0, str(HERE))
 import fake_github  # noqa: E402
 
 OMARCHY = Path(os.environ.get("OMARCHY_SHELL", "/usr/share/omarchy/shell"))
+# What the Omarchy under test offers; the plugin adapts to both.
+_bar_icon = OMARCHY / "Ui" / "BarIconButton.qml"
+OMARCHY_HAS_LABELS = _bar_icon.exists() and "property string labelText" in _bar_icon.read_text()
+_style = OMARCHY / "Commons" / "Style.qml"
+OMARCHY_HAS_REDUCE_MOTION = _style.exists() and "property bool reduceMotion" in _style.read_text()
 
 IGNORED_QT_WARNINGS = (
     "propertyCache.append",
@@ -292,7 +297,22 @@ class PanelTest(unittest.TestCase):
         self.fake.repos["octo/private"] = {"manifest": None, "access": False}
         h = self.harness()
         h.sign_in_with_keyring()
-        s = h.run(["track:octo/private", "wait:1200", "open-repo:octo/private", "click:giveAccessButton"])
+        s = h.run(["track:octo/private", "track:octo/gone", "wait:1500",
+                   "open-repo:octo/private", "open-repo:octo/gone",
+                   "open-repo:octo/private", "click:giveAccessButton"])
+        overview = h.after(2)
+        self.assertEqual(overview["view"]["page"], "overview")
+        self.assertEqual(overview["view"]["tilesText"]["clones"], "0", "combined tiles stay numbers")
+        self.assertEqual(overview["view"]["tilesText"]["clonesSub"], "0 unique per day")
+        denied = h.after(3)
+        self.assertEqual(denied["view"]["tilesText"]["clones"], "—")
+        self.assertEqual(denied["view"]["tilesText"]["clonesSub"], "needs access")
+        self.assertEqual(denied["view"]["tilesText"]["views"], "—")
+        self.assertEqual(denied["view"]["tilesText"]["viewsSub"], "needs access")
+        missing = h.after(4)
+        self.assertEqual(missing["state"]["repos"][1]["access"], "missing")
+        self.assertEqual(missing["view"]["tilesText"]["clones"], "—")
+        self.assertEqual(missing["view"]["tilesText"]["viewsSub"], "needs access")
         repo = s["state"]["repos"][0]
         self.assertEqual(repo["access"], "denied")
         self.assertTrue(repo["idChecked"])
@@ -329,7 +349,7 @@ class PanelTest(unittest.TestCase):
 
     def test_milestone_shows_once_when_the_dropdown_opens(self):
         h = self.harness()
-        h.seed({"seen": {"clones": 0}, "repos": [{"repo": "octo/plug", "pluginId": "io.github.octo.plug", "idChecked": True,
+        h.seed({"seenValue": {"clones": 0}, "repos": [{"repo": "octo/plug", "pluginId": "io.github.octo.plug", "idChecked": True,
                  "clones": {"days": {day(-40): [250, 30]}}}]})
         s = h.run(["wait:300", "close", "open", "wait:600", "close", "open", "wait:300"], settings={"milestoneStep": 100}, extra=["--closed"])
         before = h.after(0)
@@ -339,8 +359,8 @@ class PanelTest(unittest.TestCase):
         self.assertTrue(shown["view"]["cardVisible"])
         self.assertTrue(shown["view"]["confetti"], "confetti with animations on")
         self.assertEqual(shown["view"]["shown"], {"repo": "", "metric": "clones", "value": 200}, "the combined milestone")
-        self.assertEqual(s["state"]["seen"]["clones"], 2)
-        self.assertEqual(s["state"]["repos"][0]["seen"]["clones"], 2, "the repo's own milestone, first seen: recorded silently")
+        self.assertEqual(s["state"]["seenValue"]["clones"], 250)
+        self.assertEqual(s["state"]["repos"][0]["seenValue"]["clones"], 250, "the repo's own milestone, first seen: recorded silently")
         self.assertFalse(s["panel"]["milestonePending"])
         self.assertFalse(s["view"]["cardVisible"], "not shown again")
 
@@ -348,13 +368,13 @@ class PanelTest(unittest.TestCase):
         h = self.harness()
         h.seed({"repos": [{"repo": "octo/plug", "idChecked": True, "clones": {"days": {day(-40): [250, 30]}}}]})
         s = h.run(["wait:600"])
-        self.assertEqual(s["state"]["seen"]["clones"], 2)
-        self.assertEqual(s["state"]["repos"][0]["seen"]["clones"], 2)
+        self.assertEqual(s["state"]["seenValue"]["clones"], 250)
+        self.assertEqual(s["state"]["repos"][0]["seenValue"]["clones"], 250)
         self.assertFalse(s["view"]["cardVisible"])
 
     def test_animations_off_still_announces_milestones(self):
         h = self.harness()
-        h.seed({"seen": {"clones": 1}, "repos": [{"repo": "octo/plug", "idChecked": True, "clones": {"days": {day(-40): [250, 30]}}}]})
+        h.seed({"seenValue": {"clones": 100}, "repos": [{"repo": "octo/plug", "idChecked": True, "clones": {"days": {day(-40): [250, 30]}}}]})
         s = h.run(["wait:400"], settings={"animations": False})
         self.assertFalse(s["panel"]["disco"])
         self.assertTrue(s["view"]["cardVisible"])
@@ -362,13 +382,58 @@ class PanelTest(unittest.TestCase):
 
     def test_a_repo_celebrates_its_own_milestone_and_combined_can_be_off(self):
         h = self.harness()
-        h.seed({"seen": {"clones": 0}, "repos": [
-            {"repo": "octo/plug", "idChecked": True, "milestone": {"on": True, "metric": "clones", "step": 50}, "seen": {"clones": 1},
+        h.seed({"seenValue": {"clones": 0}, "repos": [
+            {"repo": "octo/plug", "idChecked": True, "milestone": {"on": True, "metric": "clones", "step": 50}, "seenValue": {"clones": 50},
              "clones": {"days": {day(-40): [120, 30]}}}]})
         s = h.run(["wait:400"], settings={"combinedMilestones": False})
         self.assertTrue(s["view"]["cardVisible"])
         self.assertEqual(s["view"]["shown"], {"repo": "octo/plug", "metric": "clones", "value": 100})
-        self.assertEqual(s["state"]["seen"]["clones"], 0, "combined off: its count is left alone")
+        self.assertEqual(s["state"]["seenValue"]["clones"], 0, "combined off: its count is left alone")
+        self.assertEqual(s["state"]["repos"][0]["seenValue"]["clones"], 120)
+
+    def test_a_smaller_step_or_another_stat_does_not_celebrate(self):
+        h = self.harness()
+        day0 = day(-40)
+        h.seed({"repos": [{
+            "repo": "octo/plug", "idChecked": True,
+            "milestone": {"on": True, "metric": "clones", "step": 100},
+            "seenValue": {"clones": 250},
+            "clones": {"days": {day0: [250, 80]}, "last14": {"count": 250, "uniques": 80, "end": day0},
+                       "first": {"uniques": 80, "end": day0}},
+        }]})
+        s = h.run(["wait:400", "open-repo:octo/plug", "number:repoMilestoneStep=25", "wait:400",
+                   "choose:repoMilestoneMetric=uniqueClones", "wait:400"],
+                  settings={"combinedMilestones": False})
+        mid = h.after(3)
+        self.assertFalse(mid["view"]["cardVisible"])
+        self.assertEqual(mid["state"]["repos"][0]["seenValue"], {"clones": 250})
+        self.assertFalse(s["view"]["cardVisible"])
+        self.assertFalse(s["panel"]["milestonePending"])
+        self.assertEqual(s["state"]["repos"][0]["seenValue"], {"clones": 250, "uniqueClones": 80})
+
+    def test_unique_only_labels_repo_rows_as_unique(self):
+        h = self.harness()
+        h.sign_in_with_keyring()
+        s = h.run(["track:octo/plug", "wait:1500", "period:14d"], settings={"countMode": "unique"})
+        # All time adds each day's unique people. 14 days is GitHub's count of different people.
+        # A fresh repo has the same number either way; only the words change.
+        all_time = h.after(1)
+        self.assertEqual(all_time["view"]["rowLines"], [
+            "4 unique clones per day  ·  5 unique views per day  ·  71 listing views",
+        ])
+        self.assertEqual(all_time["view"]["tilesText"]["clonesSub"], "unique per day")
+        self.assertEqual(all_time["view"]["tilesText"]["viewsSub"], "unique per day")
+        self.assertEqual(s["view"]["rowLines"], [
+            "4 unique clones  ·  5 unique views  ·  0 listing views",
+        ], "14-day listing views are growth inside the window")
+        self.assertEqual(s["view"]["tilesText"]["clonesSub"], "unique")
+        self.assertEqual(s["view"]["tilesText"]["viewsSub"], "unique")
+
+    def test_the_first_check_is_not_never(self):
+        h = self.harness()
+        s = h.run(["track:octo/plug", "wait:1500"])
+        self.assertEqual(s["state"]["repos"][0]["market"]["current"]["views"], 71)
+        self.assertGreater(s["state"]["lastPoll"], 0)
 
     def test_a_failed_plugin_id_lookup_is_retried(self):
         h = self.harness()
@@ -463,6 +528,30 @@ class PanelTest(unittest.TestCase):
         self.assertEqual(s["view"]["reveals"], h.after(0)["view"]["reveals"] + 1, "replayed without reopening")
         self.assertTrue(s["panel"]["opened"])
         self.assertTrue(any(path == "/market/v1/stats" for _, path, _ in self.fake.requests), "and checked")
+
+    def test_the_bar_shows_the_number_beside_the_plug(self):
+        h = self.harness()
+        h.sign_in_with_keyring()
+        h.seed({"repos": [{"repo": "octo/plug", "pluginId": "io.github.octo.plug", "idChecked": True}]})
+        s = h.run(["wait:1500"], extra=["--closed"])
+        self.assertEqual(s["panel"]["barText"], "18")
+        self.assertEqual(s["panel"]["barShown"], "18", "the number is actually drawn")
+        # The slot grows to fit it, so it doesn't overlap the next widget.
+        empty = self.harness()
+        e = empty.run(["wait:300"], extra=["--closed"])
+        self.assertEqual(e["panel"]["barShown"], "")
+        self.assertGreater(s["panel"]["slotSize"], e["panel"]["slotSize"])
+        self.assertGreater(s["panel"]["width"], e["panel"]["width"])
+        # Omarchy 4.5+ draws it with its own label; 4.0.x gets it drawn by the plugin.
+        self.assertEqual(s["panel"]["nativeLabel"], OMARCHY_HAS_LABELS)
+
+    def test_omarchys_own_animation_switch_turns_ours_off(self):
+        if not OMARCHY_HAS_REDUCE_MOTION:
+            self.skipTest("this Omarchy has no animation switch (added in 4.5)")
+        h = self.harness()
+        s = h.run(["wait:200", "reduce-motion"])
+        self.assertTrue(h.after(0)["panel"]["animations"])
+        self.assertFalse(s["panel"]["animations"])
 
     def test_a_removed_repo_closes_its_page(self):
         h = self.harness()

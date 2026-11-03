@@ -64,8 +64,9 @@ same settings also appear in Omarchy's widget settings.
   a later check sees it again, so overlapping 14-day windows can't double count.
 - **Unique numbers**: lifetime starts with GitHub's 14-day unique number at the first check, then adds
   each new day's unique number as GitHub reports it (100 at the start + 20 over the next days = 120).
-  "14 days" shows GitHub's own number, the same as its traffic page. GitHub's window rolls (a day in, a
-  day out) and every day is saved before it drops out. `tests/math.test.mjs` proves this against
+  "14 days" shows GitHub's own number, the same as its traffic page: different people. The other periods
+  are unique per day, so one person on several days counts more than once. GitHub's window rolls (a day
+  in, a day out) and every day is saved before it drops out. `tests/math.test.mjs` proves this against
   simulated traffic on every schedule.
 - **Computer off?** Every number is stored under its date. The next check fills in the days that were
   missed, as long as it happens within 14 days.

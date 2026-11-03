@@ -311,13 +311,14 @@ function totalsFor(repos, period, today) {
 // ── milestones ────────────────────────────────────────────────────────
 
 // -> { seen, celebrate } where celebrate is the milestone number to show, or 0.
-// seen < 0 means first run: record silently.
-function checkMilestone(value, step, seen) {
+// seenValue is the count last seen, not a milestone index: a new step or stat
+// must not celebrate a number that already happened. Below 0 is the first look.
+function checkMilestone(value, step, seenValue) {
+  var v = safeCount(value)
+  if (!(seenValue >= 0)) return { seen: v, celebrate: 0 }
   var s = Math.max(1, safeCount(step))
-  var n = Math.floor(safeCount(value) / s)
-  if (seen < 0) return { seen: n, celebrate: 0 }
-  if (n > seen) return { seen: n, celebrate: n * s }
-  return { seen: seen, celebrate: 0 }
+  var n = Math.floor(v / s), before = Math.floor(safeCount(seenValue) / s)
+  return { seen: Math.max(v, seenValue), celebrate: n > before ? n * s : 0 }
 }
 
 // ── schedule ──────────────────────────────────────────────────────────
@@ -406,18 +407,20 @@ function newRepo(repo, now, defaults) {
   return {
     repo: repo, addedAt: now, pluginId: "", idChecked: false, access: "", clones: null, views: null, market: null,
     checkGithub: cleanCheck(d.checkGithub), checkListing: cleanCheck(d.checkListing),
-    lastGithub: 0, lastListing: 0, missed: "", milestone: cleanMilestone(null), seen: {}
+    lastGithub: 0, lastListing: 0, missed: "", milestone: cleanMilestone(null), seenValue: {}
   }
 }
 
 function cleanState(raw) {
   var p = typeof raw === "string" ? parseJson(raw) : raw
-  var out = { schema: 1, lastPoll: 0, lastMarket: 0, authMethod: "app", repos: [], seen: {} }
+  var out = { schema: 1, lastPoll: 0, lastMarket: 0, authMethod: "app", repos: [], seenValue: {} }
   if (!isObject(p)) return out
   out.lastPoll = safeCount(p.lastPoll)
   out.lastMarket = safeCount(p.lastMarket)
   if (p.authMethod === "token") out.authMethod = "token"
-  out.seen = cleanSeen(p.seen)
+  // Older files stored a milestone index in `seen`. Drop it: a missing count
+  // is recorded quietly the next time that stat is looked at.
+  out.seenValue = cleanSeen(p.seenValue)
   var list = Array.isArray(p.repos) ? p.repos : [], have = {}
   for (var i = 0; i < list.length && out.repos.length < 100; i++) {
     var r = list[i]
@@ -433,7 +436,7 @@ function cleanState(raw) {
       checkGithub: cleanCheck(r.checkGithub), checkListing: cleanCheck(r.checkListing),
       lastGithub: safeCount(r.lastGithub), lastListing: safeCount(r.lastListing),
       missed: /^\d{4}-\d{2}-\d{2}( – \d{4}-\d{2}-\d{2})?$/.test(text(r.missed)) ? r.missed : "",
-      milestone: cleanMilestone(r.milestone), seen: cleanSeen(r.seen)
+      milestone: cleanMilestone(r.milestone), seenValue: cleanSeen(r.seenValue)
     })
   }
   return out
@@ -480,8 +483,8 @@ function barValue(repos, source, stat, today) {
 }
 
 // Milestones due now: each repo's own (if on) and the combined one (if on).
-// -> { seen: {repo name or "": {metric: n}}, celebrations: [{repo, metric, value}] }
-// A repo or combined total seen for the first time is recorded silently.
+// -> { seen: {repo name or "": {metric: count}}, celebrations: [{repo, metric, value}] }
+// `seen` lists only counts that changed. A first look is recorded silently.
 function milestoneCheck(repos, combined, combinedSeen, today) {
   var seen = {}, celebrations = []
   function check(key, list, cfg, seenMap) {
@@ -492,7 +495,7 @@ function milestoneCheck(repos, combined, combinedSeen, today) {
     if (r.celebrate > 0) celebrations.push({ repo: key, metric: cfg.metric, value: r.celebrate })
   }
   for (var i = 0; i < repos.length; i++)
-    if (repos[i].milestone && repos[i].milestone.on) check(repos[i].repo, [repos[i]], repos[i].milestone, repos[i].seen || {})
+    if (repos[i].milestone && repos[i].milestone.on) check(repos[i].repo, [repos[i]], repos[i].milestone, repos[i].seenValue || {})
   if (combined && combined.on && repos.length > 0) check("", repos, cleanMilestone(combined), combinedSeen || {})
   return { seen: seen, celebrations: celebrations }
 }

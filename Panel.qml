@@ -35,7 +35,9 @@ Panel {
   readonly property string panelSize: pick("panelSize", ["compact", "normal", "tall"], "normal")
   readonly property string accentRole: pick("accent", ["theme", "foreground", "urgent"], "theme")
   readonly property color accent: accentRole === "foreground" ? Color.foreground : (accentRole === "urgent" ? Color.urgent : Color.accent)
-  readonly property bool animations: setting("animations", true) !== false
+  // Off when the user turns them off here, or when Omarchy's own animations
+  // are off (Omarchy 4.5+: `omarchy toggle animations`, read as Style.reduceMotion).
+  readonly property bool animations: setting("animations", true) !== false && Style.reduceMotion !== true
   readonly property bool showCombined: setting("showCombined", true) !== false
   readonly property var combinedMilestone: ({
     on: setting("combinedMilestones", true) !== false,
@@ -55,7 +57,7 @@ Panel {
 
   // A milestone crossed since the dropdown was last opened: the bar glows until then.
   readonly property bool milestonePending: PlugStore.stateLoaded
-      && Model.milestoneCheck(PlugStore.repos, combinedMilestone, PlugStore.state.seen, today).celebrations.length > 0
+      && Model.milestoneCheck(PlugStore.repos, combinedMilestone, PlugStore.state.seenValue, today).celebrations.length > 0
   readonly property bool disco: milestonePending && animations
 
   // Read straight from the settings: this runs on settingsChanged, before
@@ -64,7 +66,6 @@ Panel {
     PlugStore.applySettings(pick("defaultCheckGithub", Model.CHECKS, "daily"), pick("defaultCheckListing", Model.CHECKS, "daily"))
   }
   onSettingsChanged: applySettings()
-  Component.onCompleted: applySettings()
 
   // Omarchy's own pattern (its clock panel): apply locally so the panel
   // updates on the click, then write this widget's shell.json entry.
@@ -83,11 +84,42 @@ Panel {
   NumberAnimation on hue { running: root.disco; from: 0; to: 1; duration: 1600; loops: Animation.Infinite }
   readonly property color discoColor: Qt.hsva(root.hue, 0.85, 1.0, 1.0)
 
+  // The number beside the plug. Omarchy 4.5+ draws a label beside a bar icon
+  // itself (BarIconButton.labelText, like the battery percentage); 4.0.x
+  // doesn't, so there it is drawn next to the plug inside the icon. Which one
+  // is chosen by asking the installed Omarchy, so an Omarchy update switches
+  // over on the next shell start with nothing to change here.
+  readonly property bool nativeLabel: button.labelText !== undefined
+
+  FontMetrics {
+    id: labelMetrics
+    font.family: root.fontFamily
+    font.pixelSize: root.nativeLabel ? Style.bar.iconFont : Style.font.body
+  }
+  readonly property real labelWidth: barText === "" ? 0 : labelMetrics.advanceWidth(barText)
+  // 4.0.x: the icon is the plug plus the number.
+  readonly property real drawnWidth: Style.bar.iconFont + (labelWidth > 0 ? Style.space(5) + labelWidth : 0)
+
+  Component.onCompleted: {
+    applySettings()
+    if (nativeLabel) {
+      button.labelText = Qt.binding(function() { return root.barText })
+      button.slotSize = Qt.binding(function() {
+        return Style.bar.iconSlot + (root.labelWidth > 0 ? root.labelWidth + Style.space(4) : 0)
+      })
+    } else {
+      button.opticalSize = Qt.binding(function() { return Math.max(Style.bar.iconCanvas, root.drawnWidth) })
+      button.slotSize = Qt.binding(function() {
+        return root.labelWidth > 0 ? root.drawnWidth + Style.space(10) : Style.bar.iconSlot
+      })
+    }
+  }
+
   BarIconButton {
     id: button
+    objectName: "barButton"
     anchors.fill: parent
     bar: root.bar
-    text: root.barText
     tooltipText: {
       if (PlugStore.repos.length === 0) return "HowIsMyPlug?: add a repo to start tracking"
       var one = root.barSource === "all" ? null : Model.findRepo(PlugStore.repos, root.barSource)
@@ -115,13 +147,28 @@ Panel {
             NumberAnimation { from: 0.35; to: 0.10; duration: 500; easing.type: Easing.InOutSine }
           }
         }
-        Text {
+        Row {
           anchors.centerIn: parent
-          text: "\u{f06a5}"   // power plug
-          font.family: root.fontFamily
-          font.pixelSize: Style.bar.iconFont
-          renderType: Text.NativeRendering
-          color: root.disco ? root.discoColor : (root.milestonePending ? root.accent : root.barForeground)
+          spacing: Style.space(5)
+          Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: "\u{f06a5}"   // power plug
+            font.family: root.fontFamily
+            font.pixelSize: Style.bar.iconFont
+            renderType: Text.NativeRendering
+            color: root.disco ? root.discoColor : (root.milestonePending ? root.accent : root.barForeground)
+          }
+          Text {
+            objectName: "barNumber"
+            anchors.verticalCenter: parent.verticalCenter
+            visible: !root.nativeLabel && root.barText !== ""
+            text: root.barText
+            textFormat: Text.PlainText
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.body
+            renderType: Text.NativeRendering
+            color: root.disco ? Qt.hsva((root.hue + 0.5) % 1, 0.85, 1.0, 1.0) : root.barForeground
+          }
         }
       }
     }

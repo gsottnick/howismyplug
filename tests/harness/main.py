@@ -29,7 +29,7 @@ from PySide6.QtGui import QBitmap, QColor, QDesktopServices, QGuiApplication, QI
 from PySide6.QtQml import QJSValue, QQmlApplicationEngine, QQmlEngine, QQmlExpression  # noqa: E402
 from PySide6.QtQuick import QQuickItem, QQuickWindow  # noqa: E402
 
-from qsmock import core, io, wayland  # noqa: E402,F401  (import registers the QML types)
+from qsmock import core, hyprland, io, pipewire, wayland  # noqa: E402,F401  (import registers the QML types)
 
 
 def build_import_root(omarchy_shell: Path) -> Path:
@@ -48,7 +48,7 @@ def build_import_root(omarchy_shell: Path) -> Path:
         link.symlink_to(target)
     # A system-wide Quickshell install puts its real modules on Qt's import
     # path; these plugin-less qmldirs win, so the qsmock registrations are used.
-    for module in ("Quickshell", "Quickshell.Io", "Quickshell.Wayland"):
+    for module in ("Quickshell", "Quickshell.Io", "Quickshell.Wayland", "Quickshell.Hyprland", "Quickshell.Services.Pipewire"):
         directory = root.joinpath(*module.split("."))
         directory.mkdir(parents=True, exist_ok=True)
         (directory / "qmldir").write_text(f"module {module}\n")
@@ -87,8 +87,8 @@ STORE_PROPS = (
     "pollError",
     "pollEvery",
 )
-PANEL_PROPS = ("width", "height", "opened", "period", "countMode", "barStat", "barText", "barValue", "milestonePending", "disco", "animations")
-VIEW_PROPS = ("reveals", "page", "currentRepo", "shown", "codeCopied", "repoError", "tokenError", "tokenMode", "cardOpacity", "editing")
+PANEL_PROPS = ("nativeLabel", "width", "height", "opened", "period", "countMode", "barStat", "barText", "barValue", "milestonePending", "disco", "animations")
+VIEW_PROPS = ("reveals", "page", "currentRepo", "shown", "codeCopied", "repoError", "tokenError", "tokenMode", "cardOpacity", "editing", "rowLines", "tilesText")
 
 # URLs the plugin asked the desktop to open, recorded instead of opened.
 OPENED: list[str] = []
@@ -116,6 +116,14 @@ def snapshot(plugin: QObject, store: QObject) -> dict:
     view = plugin.findChild(QObject, "plugView")
     state["view"] = {name: read(view, name) for name in VIEW_PROPS} if view else {}
     state["view"]["totals"] = read(view, "totals", {}) if view else {}
+    # What the bar shows beside the plug, whichever way this Omarchy draws it.
+    button = find_or_none(plugin, "barButton")
+    number = find_or_none(plugin, "barNumber")
+    if read(plugin, "nativeLabel"):
+        state["panel"]["barShown"] = read(button, "labelText", "") if button else ""
+    else:
+        state["panel"]["barShown"] = read(number, "text", "") if number and number.property("visible") else ""
+    state["panel"]["slotSize"] = read(button, "slotSize") if button else None
     confetti = plugin.findChild(QObject, "confetti")
     state["view"]["confetti"] = bool(confetti and confetti.property("running"))
     card = plugin.findChild(QObject, "milestoneCard")
@@ -166,6 +174,13 @@ def find(root: QObject, name: str):
     raise SystemExit(f"no object named {name!r}")
 
 
+def find_or_none(root: QObject, name: str):
+    try:
+        return find(root, name)
+    except SystemExit:
+        return None
+
+
 def apply_step(step: str, plugin: QObject, store: QObject, harness=None):
     """Run one scripted interaction, named the way a user would describe it."""
     name, _, argument = step.partition(":")
@@ -205,6 +220,9 @@ def apply_step(step: str, plugin: QObject, store: QObject, harness=None):
     elif name == "number":
         control, _, value = argument.partition("=")
         QMetaObject.invokeMethod(find(plugin, control), "modified", Q_ARG(int, int(value)))
+    elif name == "reduce-motion":
+        # The animation switch Omarchy 4.5 added, as its toggle sets it.
+        evaluate(plugin, "Style.reduceMotion = true")
     elif name == "click":
         QMetaObject.invokeMethod(find(plugin, argument), "clicked")
     elif name == "wait":

@@ -54,12 +54,12 @@ def fake_world():
     return fake
 
 
-def history(seen):
+def history(seen_value):
     # Tracked for six weeks: GitHub's 14-day number at the first check, then saved days.
     old = {day(-14 - i): [25, 7] for i in range(28)}
     clones = {"days": old, "first": {"uniques": 58, "end": day(-28)}}
     views = {"days": {d: [60, 12] for d in old}, "first": {"uniques": 97, "end": day(-28)}}
-    return {"seen": seen, "repos": [
+    return {"seenValue": seen_value, "repos": [
         {"repo": "octo/weather-plug", "addedAt": 1, "clones": clones, "views": views},
         {"repo": "octo/lofi-bar", "addedAt": 1},
         {"repo": "octo/dotfiles", "addedAt": 1},
@@ -103,10 +103,10 @@ def main() -> int:
         return 1
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp)
-        # The dropdown after it settles; then the milestone card mid-confetti
-        # (a combined clone milestone crossed since the last look).
-        render(work / "panel.png", {"clones": 99}, ["wait:2600"], 2500)
-        render(work / "milestone.png", {"clones": 10}, ["wait:1500"], 2500)
+        # The dropdown after it settles (seenValue is above the total, so no
+        # card); then the milestone card mid-confetti (1250 seen, 1300 crossed).
+        render(work / "panel.png", {"clones": 10000}, ["wait:2600"], 2500)
+        render(work / "milestone.png", {"clones": 1250}, ["wait:1500"], 2500)
         crop_to_card(work / "milestone.png")
         shutil.copy(HERE / "preview.html", work / "preview.html")
         subprocess.run(
