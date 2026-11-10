@@ -419,12 +419,12 @@ class PanelTest(unittest.TestCase):
         # A fresh repo has the same number either way; only the words change.
         all_time = h.after(1)
         self.assertEqual(all_time["view"]["rowLines"], [
-            "4 unique clones per day  ·  5 unique views per day  ·  71 listing views",
+            "4 unique clones per day  ·  5 unique repo views per day  ·  71 listing views",
         ])
         self.assertEqual(all_time["view"]["tilesText"]["clonesSub"], "unique per day")
         self.assertEqual(all_time["view"]["tilesText"]["viewsSub"], "unique per day")
         self.assertEqual(s["view"]["rowLines"], [
-            "4 unique clones  ·  5 unique views  ·  0 listing views",
+            "4 unique clones  ·  5 unique repo views  ·  0 listing views",
         ], "14-day listing views are growth inside the window")
         self.assertEqual(s["view"]["tilesText"]["clonesSub"], "unique")
         self.assertEqual(s["view"]["tilesText"]["viewsSub"], "unique")
