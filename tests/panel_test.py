@@ -345,7 +345,7 @@ class PanelTest(unittest.TestCase):
         h = self.harness()
         (h.workdir / "clipboard").write_text("octo/plug")
         s = h.run(["open", "paste:repoField"])
-        self.assertEqual(s["view"]["repoText"], "octo/plug")
+        self.assertEqual(s["view"]["repoText"], "octo/plug", "from the bounded read, not Qt's clipboard (the harness puts \"7\" there)")
         (h.workdir / "clipboard").write_text("x" * 100_000)
         s = h.run(["open", "paste:repoField"])
         self.assertEqual(s["view"]["repoText"], "", "an oversized clipboard is never inserted")
@@ -355,6 +355,16 @@ class PanelTest(unittest.TestCase):
         h = self.harness()
         s = h.run(["open", "right-click:repoField", "wait:300"])
         self.assertEqual(s["view"]["menusOpen"], 0)
+
+    def test_every_text_input_is_guarded_against_qts_own_paste(self):
+        h = self.harness()
+        (h.workdir / "clipboard").write_text("octo/plug")
+        s = h.run(["track:octo/plug", "open", "page:settings", "paste:combinedMilestoneStep", "wait:300"])
+        self.assertGreaterEqual(s["view"]["textInputs"], 5, "repo, two token fields, two number fields")
+        self.assertEqual(s["view"]["guardedInputs"], s["view"]["textInputs"])
+        # The harness put "7" on Qt's clipboard; the number field must not take it.
+        self.assertEqual(s["view"]["inputTexts"]["combinedMilestoneStep"], "100")
+        self.assertEqual(s["panel"]["settings"].get("milestoneStep", 100), 100)
 
     def test_an_oversized_reply_is_dropped(self):
         self.fake.market["io.github.octo.plug"]["padding"] = "x" * 9_000_000
@@ -370,6 +380,8 @@ class PanelTest(unittest.TestCase):
         self.assertFalse(s["stateLoaded"])
         self.assertEqual(s["pollError"], "Couldn't read the saved history. Trying again…")
         self.assertTrue(h.history_file.is_dir(), "nothing was written over it")
+        self.assertEqual(s["state"]["repos"], [], "and nothing is added that could not be kept")
+        self.assertEqual(s["view"]["repoError"], "Still reading the saved history. Try again in a moment.")
 
     def test_a_keyring_that_cant_be_read_is_reported_and_sign_in_still_works(self):
         h = self.harness()

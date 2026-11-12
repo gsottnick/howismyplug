@@ -1,8 +1,8 @@
 # Security
 
 HowIsMyPlug? reads traffic numbers. It never writes to GitHub, never runs anything it downloads,
-and needs nothing beyond what Omarchy ships (Quickshell, libsecret's `secret-tool`, GNOME Keyring,
-`wl-copy`).
+and needs nothing beyond what Omarchy ships (Quickshell, `curl`, libsecret's `secret-tool`, GNOME
+Keyring, `wl-copy`/`wl-paste`, coreutils' `timeout`).
 
 ## What it can access
 
@@ -19,8 +19,9 @@ and needs nothing beyond what Omarchy ships (Quickshell, libsecret's `secret-too
 
 - Stored only in the **system keyring**, via `secret-tool store`, which receives it **on stdin**.
   Read back with `secret-tool lookup` into the plugin's memory.
-- Sent only to **api.github.com**, in an `Authorization` header, straight from the shell process
-  (QML `XMLHttpRequest`, HTTPS). No child process ever sees it.
+- Sent only to **api.github.com**, in an `Authorization` header, by `curl` over HTTPS. `curl`
+  receives the whole request, that header included, **on stdin** as a config file; its command line
+  is the same constant every time. Only `curl` and `secret-tool` ever see the token, both on stdin.
 - **Never** on a command line (so never in `/proc/*/cmdline`), never in `shell.json`, never in the
   history file, never in a log, never in an error message.
 - **Sign out** deletes it from the keyring (`secret-tool clear`). Revoke it on GitHub too if you
@@ -55,17 +56,22 @@ ignored unless it is exactly `http://127.0.0.1:<port>`.
 
 ## Limits
 
-- **Replies:** at most 6 requests run at once, 512 can wait, and each one ends after 20 s. A reply is
-  dropped once it grows past 1 MiB (GitHub) or 8 MiB (marketplace stats), checked as each network
-  chunk arrives, before it is parsed.
+- **Replies:** at most 6 requests run at once, 512 can wait, and each one ends after 20 s (`curl`'s
+  own `max-time`, then the plugin's watchdog, then `timeout`). The size cap is hard: `curl` stops at
+  `max-filesize` (1 MiB for GitHub, 8 MiB for marketplace stats) and asks for no compression, so no
+  more than the cap ever reaches the shell process, and the plugin checks again as it reads. `curl`
+  runs with `-q` (no `~/.curlrc`), HTTPS only, and follows no redirects.
 - **Paste:** the repo and token fields never let Qt read the clipboard. Ctrl+V, Shift+Insert and
   the Paste key read at most 4096 characters of text through `wl-paste`, stopped by `timeout` after
   2 s and by the plugin itself after 3.5 s. The text is inserted only if the same field kept focus
   the whole time and its text, cursor and selection are unchanged. Middle-click paste, the
-  right-click menu, the Menu key and Shift+F10 are off in those fields.
+  right-click menu, the Menu key and Shift+F10 are off in those fields, and Qt's context menu (it
+  has a Paste of its own) is removed from them. The fields take at most 300 characters by any
+  route. In the milestone number fields paste is off altogether.
 - **Helpers:** every `secret-tool`, `wl-copy`, history read and history write runs under `timeout`,
-  and a helper that fails to start is detected (Quickshell reports no exit then). Their output is
-  capped too (4 KiB from the keyring, 64 MiB of history).
+  with the plugin's own 20 s deadline behind it, and a helper that fails to start is detected
+  (Quickshell reports no exit then). Their output is capped too (4 KiB from the keyring, 64 MiB of
+  history).
   - Keyring can't be read: you can sign in at once; the lookup is retried every minute and the
     dropdown says so.
   - Sign-out the keyring refuses: reported, and retried every minute until the entry is gone.

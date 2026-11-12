@@ -3,6 +3,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import QtQml.Models
 import "Model.js" as Model
 
 // HowIsMyPlug? data: GitHub sign-in, the tracked repos and their history,
@@ -12,8 +13,8 @@ import "Model.js" as Model
 // Security rules (see SECURITY.md):
 // - The GitHub token lives only in the system keyring and in `_token` here.
 //   It reaches secret-tool on stdin, and GitHub in an Authorization header
-//   sent straight from this process (XMLHttpRequest). It is never on a
-//   command line, in a file, in a log line or in an error message.
+//   sent by curl, which also gets it on stdin. It is never on a command
+//   line, in a file, in a log line or in an error message.
 // - Requests go only to the hosts below, over HTTPS.
 // - Every response is sanitized by Model.js before it is used or shown.
 Singleton {
@@ -69,6 +70,8 @@ Singleton {
   // ── repos ───────────────────────────────────────────────────────────
   // -> "" on success, or why not.
   function addRepo(input) {
+    // Before the history is read, a repo added here would be dropped when it loads.
+    if (!stateLoaded) return "Still reading the saved history. Try again in a moment."
     var name = Model.normalizeRepo(input)
     if (!name) return "Use owner/repo or a GitHub link, like yourname/my-omarchy-plugin"
     for (var i = 0; i < state.repos.length; i++)
@@ -135,79 +138,133 @@ Singleton {
   }
 
   // ── HTTP ────────────────────────────────────────────────────────────
-  // Every request answers exactly once: with the server's reply, or with
-  // status 0 after 20 s, when the reply grows past its size cap, when the
-  // queue is full, or when it can't be sent. A reply that never comes (a
-  // stalled reused connection) must not stop a sign-in or a check without a word.
+  // Requests run in `curl`, one per slot, so the size cap is a hard one:
+  // curl itself stops at max-filesize (it asks for no compression, so the
+  // bytes it counts are the bytes that arrive), and nothing past the cap is
+  // ever read into this process. The whole request, token header included,
+  // reaches curl on stdin as a config file; its command line is constant.
+  //
+  // Every request answers exactly once: with the server's status and reply,
+  // or with status 0 when it times out (curl's max-time, then the watchdog
+  // below, then `timeout`), outgrows its cap, can't start, or the queue is full.
   // At most maxInflight run at once; the rest wait their turn in _queue.
   readonly property int maxInflight: 6
   readonly property int maxQueued: 512          // 100 repos x 3 requests, with room
-  readonly property int maxReplyChars: 1048576  // GitHub replies here are a few KB
-  readonly property int maxMarketChars: 8388608 // all marketplace stats, ~400 KB in 2026
-  property var _inflight: []
+  readonly property int maxReplyBytes: 1048576  // GitHub replies here are a few KB
+  readonly property int maxMarketBytes: 8388608 // all marketplace stats, ~400 KB in 2026
   property var _queue: []
-  function request(method, url, headers, body, done, maxChars) {
-    var entry = { method: method, url: url, headers: headers, body: body || null, done: done,
-                  max: maxChars || root.maxReplyChars, x: null, started: 0, answered: false }
-    if (root._queue.length >= root.maxQueued) { done(0, ""); return }
-    root._queue = root._queue.concat([entry])
+  property var _slots: []    // per curl slot: { entry, out, status, over, began }
+  property int _busy: 0      // slots with a request in them (drives the watchdog)
+
+  // urgent: ahead of queued checks (sign-in must not wait behind 300 of them).
+  function request(method, url, headers, body, done, maxBytes, urgent) {
+    var entry = { method: method, url: url, headers: headers, body: body || "", done: done,
+                  max: maxBytes || root.maxReplyBytes, started: 0, answered: false }
+    entry.config = curlConfig(entry)
+    if (entry.config === "" || root._queue.length >= root.maxQueued) { done(0, ""); return }
+    root._queue = urgent ? [entry].concat(root._queue) : root._queue.concat([entry])
     pumpRequests()
   }
 
-  function pumpRequests() {
-    while (root._inflight.length < root.maxInflight && root._queue.length > 0) {
-      var entry = root._queue[0]
-      root._queue = root._queue.slice(1)
-      sendRequest(entry)
+  // The request as a curl config file. Values are quoted, and one holding a
+  // control character is refused, so nothing in a value can add an option.
+  function curlConfig(entry) {
+    var bad = false
+    function q(v) {
+      v = String(v)
+      if (/[\x00-\x1f\x7f]/.test(v)) bad = true
+      return '"' + v.replace(/[\\"]/g, "\\$&") + '"'
     }
+    var lines = ["url = " + q(entry.url), "request = " + q(entry.method)]
+    for (var k in entry.headers) lines.push("header = " + q(k + ": " + entry.headers[k]))
+    if (entry.body !== "") lines.push("data = " + q(entry.body))
+    lines.push("max-filesize = " + entry.max,
+               "max-time = " + (root.requestTimeoutMs / 1000),
+               'proto = "=' + (root.testBase ? "http" : "https") + '"',   // no other protocol; redirects are not followed
+               'write-out = "%{stderr}%{http_code}"')
+    return bad ? "" : lines.join("\n") + "\n"
   }
 
-  function sendRequest(entry) {
-    var x = new XMLHttpRequest()
-    entry.x = x
-    entry.started = Date.now()
-    root._inflight = root._inflight.concat([entry])
-    // LOADING fires for each chunk that arrives, so an oversized reply is
-    // dropped as soon as it passes the cap instead of after it is all buffered.
-    // shortcut: the cap is checked per network chunk, so one chunk can overshoot it; QML's XHR has no read limit.
-    x.onreadystatechange = function() {
-      if (entry.answered) return
-      if (x.readyState === XMLHttpRequest.HEADERS_RECEIVED && Number(x.getResponseHeader("Content-Length")) > entry.max) return answerRequest(entry, 0, "")
-      if (x.readyState === XMLHttpRequest.LOADING && x.responseText.length > entry.max) return answerRequest(entry, 0, "")
-      if (x.readyState !== XMLHttpRequest.DONE) return
-      var reply = x.responseText
-      if (reply.length > entry.max) answerRequest(entry, 0, "")
-      else answerRequest(entry, x.status, reply)
-    }
-    try {
-      x.open(entry.method, entry.url)
-      for (var k in entry.headers) x.setRequestHeader(k, entry.headers[k])
-      x.send(entry.body)
-    } catch (err) {
-      answerRequest(entry, 0, "")
+  function pumpRequests() {
+    for (var i = 0; i < root.maxInflight && root._queue.length > 0; i++) {
+      var proc = fetchers.objectAt(i)
+      if (!root._slots[i]) root._slots[i] = { entry: null, out: "", status: "", over: false, began: false }
+      var slot = root._slots[i]
+      if (!proc || proc.running || slot.entry) continue
+      slot.entry = root._queue[0]
+      root._queue = root._queue.slice(1)
+      slot.out = ""; slot.status = ""; slot.over = false; slot.began = false
+      slot.entry.started = Date.now()
+      root._busy++
+      proc.stdinEnabled = true
+      proc.running = true
     }
   }
 
   function answerRequest(entry, status, body) {
     if (entry.answered) return
     entry.answered = true
-    root._inflight = root._inflight.filter(function(e) { return e !== entry })
-    // Abort on the next turn: aborting inside XHR's own LOADING callback frees
-    // the reply while Qt is still reading it (a crash). `answered` ignores the rest.
-    var x = entry.x
-    if (status === 0 && x) Qt.callLater(function() { try { x.abort() } catch (err) {} })
     entry.done(status, body)
+  }
+
+  // The slot's curl is gone (exited, or never started): answer and take the next.
+  function fetchEnded(i, code) {
+    var slot = root._slots[i]
+    if (!slot || !slot.entry) return
+    var entry = slot.entry, status = /^[1-5]\d\d$/.test(slot.status) ? Number(slot.status) : 0
+    var ok = code === 0 && !slot.over && status > 0
+    var body = ok ? slot.out : ""
+    slot.entry = null; slot.out = ""; slot.status = ""
+    root._busy--
+    answerRequest(entry, ok ? status : 0, body)
     pumpRequests()
   }
 
+  Instantiator {
+    id: fetchers
+    model: root.maxInflight
+    delegate: Process {
+      command: ["timeout", "-k", "2", String(Math.ceil(root.requestTimeoutMs / 1000) + 10), "curl", "-q", "--silent", "--config", "-"]
+      stdout: SplitParser {
+        splitMarker: ""   // every chunk as it arrives
+        onRead: function(chunk) {
+          var slot = root._slots[index]
+          if (!slot || !slot.entry || slot.over) return
+          slot.out += chunk
+          // curl already stopped at the cap; this is this process's own check.
+          if (slot.out.length > slot.entry.max) { slot.over = true; slot.out = ""; fetchers.objectAt(index).running = false }
+        }
+      }
+      stderr: SplitParser {   // only the status code is written there
+        splitMarker: ""
+        onRead: function(chunk) { var slot = root._slots[index]; if (slot && slot.status.length < 16) slot.status += chunk.slice(0, 16) }
+      }
+      onStarted: {
+        var slot = root._slots[index]
+        slot.began = true
+        write(slot.entry.config)
+        slot.entry.config = ""
+        stdinEnabled = false
+      }
+      onExited: function(code) { root.fetchEnded(index, code) }
+      onRunningChanged: if (!running && root._slots[index] && !root._slots[index].began) root.fetchEnded(index, -1)
+    }
+  }
+
+  // The plugin's own deadline, should curl and `timeout` both overstay:
+  // answer, then stop the slot's curl (the slot frees when it is gone).
   Timer {
-    interval: 2000
-    running: root._inflight.length > 0
+    interval: 1000
+    running: root._busy > 0
     repeat: true
     onTriggered: {
       var now = Date.now()
-      root._inflight.filter(function(e) { return now - e.started >= root.requestTimeoutMs })
-                    .forEach(function(e) { root.answerRequest(e, 0, "") })
+      for (var i = 0; i < root._slots.length; i++) {
+        var slot = root._slots[i]
+        if (!slot || !slot.entry || slot.entry.answered || now - slot.entry.started < root.requestTimeoutMs + 3000) continue
+        root.answerRequest(slot.entry, 0, "")
+        fetchers.objectAt(i).running = false
+      }
     }
   }
   property int requestTimeoutMs: Number(Quickshell.env("HOWISMYPLUG_TEST_TIMEOUT_MS")) > 0 && root.testBase ? Number(Quickshell.env("HOWISMYPLUG_TEST_TIMEOUT_MS")) : 20000
@@ -318,7 +375,7 @@ Singleton {
         root.state = s
       }
       finish()
-    }, root.maxMarketChars)
+    }, root.maxMarketBytes)
   }
 
   property double _pollStarted: 0
@@ -382,7 +439,7 @@ Singleton {
       devicePoll.restart()
       copy(d.userCode)
       Qt.openUrlExternally(d.uri)
-    })
+    }, 0, true)
   }
 
   function cancelSignIn() {
@@ -410,7 +467,7 @@ Singleton {
         if (r.error) { root.cancelSignIn(); root.authError = r.error; return }
         if (r.slowDown) devicePoll.interval = r.intervalMs + root.pollMarginMs
         devicePoll.restart()
-      })
+      }, 0, true)
     }
   }
 
@@ -465,16 +522,32 @@ Singleton {
   // program that never started (Quickshell then reports no exit at all) from
   // one that ran.
   property var _began: ({})
+  property var _helperStarted: ({})
   function startHelper(proc) {
     root._began[proc.objectName] = false
+    root._helperStarted[proc.objectName] = Date.now()
     proc.running = true
+  }
+
+  // The plugin's own deadline for a helper, should `timeout` itself overstay:
+  // stopping it makes it exit, and its failure path runs.
+  readonly property int helperDeadlineMs: 20000
+  Timer {
+    interval: 2000
+    repeat: true
+    running: keyLookup.running || keyStore.running || keyClear.running || stateRead.running || stateWrite.running || clipboard.running
+    onTriggered: {
+      var now = Date.now(), helpers = [keyLookup, keyStore, keyClear, stateRead, stateWrite, clipboard]
+      for (var i = 0; i < helpers.length; i++)
+        if (helpers[i].running && now - (root._helperStarted[helpers[i].objectName] || now) > root.helperDeadlineMs) helpers[i].running = false
+    }
   }
   function began(proc) { root._began[proc.objectName] = true }
   function neverBegan(proc) { return !proc.running && root._began[proc.objectName] === false }
 
   function copy(value) {
     root._clip = String(value)
-    if (!clipboard.running) { clipboard.stdinEnabled = true; clipboard.running = true }
+    if (!clipboard.running) { clipboard.stdinEnabled = true; startHelper(clipboard) }
   }
 
   // Links built only from validated names, opened in the browser.
@@ -644,6 +717,7 @@ Singleton {
   property string _clip: ""
   Process {
     id: clipboard
+    objectName: "clipboard"
     command: ["timeout", "-k", "1", "5", "wl-copy"]   // wl-copy hands the text to a background copy of itself and exits
     onStarted: {
       write(root._clip)
@@ -748,7 +822,7 @@ Singleton {
   }
 
   // Keeps "updated 3 h ago" honest while the bar sits there, and unsticks a
-  // check whose request never came back (XHR has no reliable timeout here).
+  // check that never finished, whatever the reason.
   Timer {
     interval: 60000; running: true; repeat: true
     onTriggered: {

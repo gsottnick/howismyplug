@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Effects
 import qs.Commons
 import qs.Ui
+import QtQuick.Controls as Controls
 import "Model.js" as Model
 
 // The HowIsMyPlug? dropdown. Pages: the overview (combined totals and the
@@ -131,6 +132,34 @@ Item {
   // the whole time (losing it bumps pasteSeq) and its text, cursor and
   // selection are what they were when the paste was asked for.
   property int pasteSeq: 0
+  // Qt 6.9+ gives every TextField a context menu with Paste, which reads the
+  // clipboard itself. Take the menu away, whatever would open it. Qt creates
+  // its default menu the first time the property is read, and that would undo
+  // a null set before it, so read first. (Older Qt has no such menu and no
+  // ContextMenu type: nothing to do.)
+  property int guardedInputs: 0   // for the tests: must equal the number of text inputs in the dropdown
+  function noPasteMenu(field) {
+    try {
+      var attached = field.Controls.ContextMenu
+      if (attached.menu !== null) attached.menu = null
+      if (attached.menu === null) root.guardedInputs++
+    } catch (e) { root.guardedInputs++ }
+  }
+
+  // The number fields are Omarchy's NumberField, whose inner TextInput would
+  // paste the same way. A number needs no paste: there it is simply off.
+  function noPaste(input) {
+    input.Keys.pressed.connect(function(event) {
+      if (event.matches(StandardKey.Paste) || event.key === Qt.Key_Paste) event.accepted = true
+    })
+    mouseBlock.createObject(input)
+    root.guardedInputs++
+  }
+  Component {
+    id: mouseBlock
+    // Middle-click would paste the selection; right-click is taken with it.
+    MouseArea { anchors.fill: parent; acceptedButtons: Qt.MiddleButton | Qt.RightButton }
+  }
   function pasteKey(field, event, onError) {
     if (event.matches(StandardKey.Paste) || event.key === Qt.Key_Paste) {
       event.accepted = true
@@ -415,6 +444,8 @@ Item {
             placeholderText: "e.g. yourname/my-omarchy-plugin"
             onActiveFocusChanged: { root.editorsFocused += activeFocus ? 1 : -1; root.pasteSeq++ }
             onAccepted: root.addRepo()
+            maximumLength: 300   // "owner/repo" or its link; whatever the route, no more goes in
+            Component.onCompleted: root.noPasteMenu(repoField)
             Keys.onPressed: function(event) { root.pasteKey(repoField, event, function(why) { root.repoError = why }) }
             // Middle-click and right-click would paste or open a Paste menu outside the bound.
             MouseArea { anchors.fill: parent; acceptedButtons: Qt.MiddleButton | Qt.RightButton; onPressed: function(mouse) { repoField.forceActiveFocus() } }
@@ -921,6 +952,7 @@ Item {
       value: ms.step
       foreground: root.fg; accent: root.accent; fontFamily: root.ff
       onModified: function(v) { ms.stepPicked(v) }
+      Component.onCompleted: root.noPaste(stepField.field.contentItem)
     }
   }
 
@@ -1123,6 +1155,8 @@ Item {
             placeholderText: "github_pat_…"
             onActiveFocusChanged: { root.editorsFocused += activeFocus ? 1 : -1; root.pasteSeq++ }
             onAccepted: root.saveToken(tokenField)
+            maximumLength: 300   // a token is at most 255
+            Component.onCompleted: root.noPasteMenu(tokenField)
             Keys.onPressed: function(event) { root.pasteKey(tokenField, event, function(why) { root.tokenError = why }) }
             MouseArea { anchors.fill: parent; acceptedButtons: Qt.MiddleButton | Qt.RightButton; onPressed: function(mouse) { tokenField.forceActiveFocus() } }
           }

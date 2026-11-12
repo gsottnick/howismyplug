@@ -88,7 +88,7 @@ STORE_PROPS = (
     "pollEvery",
 )
 PANEL_PROPS = ("nativeLabel", "width", "height", "opened", "period", "countMode", "barStat", "barText", "barValue", "milestonePending", "disco", "animations")
-VIEW_PROPS = ("reveals", "page", "currentRepo", "shown", "codeCopied", "repoError", "tokenError", "tokenMode", "cardOpacity", "editing", "rowLines", "tilesText")
+VIEW_PROPS = ("guardedInputs", "reveals", "page", "currentRepo", "shown", "codeCopied", "repoError", "tokenError", "tokenMode", "cardOpacity", "editing", "rowLines", "tilesText")
 
 # URLs the plugin asked the desktop to open, recorded instead of opened.
 OPENED: list[str] = []
@@ -129,6 +129,19 @@ def snapshot(plugin: QObject, store: QObject) -> dict:
     # Any popup menu open anywhere (the text fields must never show Qt's Paste menu).
     state["view"]["menusOpen"] = sum(1 for w in QGuiApplication.topLevelWindows() for o in w.findChildren(QObject)
                                      if "Menu" in o.metaObject().className() and o.property("opened"))
+    # Every text input in the dropdown, to compare with the view's count of inputs it guards against paste.
+    inputs = {id(o): o for w in QGuiApplication.topLevelWindows() for o in w.findChildren(QObject)
+              if o.inherits("QQuickTextInput") or o.inherits("QQuickTextEdit")}
+    state["view"]["textInputs"] = len(inputs)
+    # Each input's text, under the nearest objectName above it.
+    texts = {}
+    for o in inputs.values():
+        named = o
+        while named is not None and not named.objectName():
+            named = named.parentItem() if isinstance(named, QQuickItem) else named.parent()
+        if named is not None:
+            texts[named.objectName()] = read(o, "text", "")
+    state["view"]["inputTexts"] = texts
     repo_field = find_or_none(plugin, "repoField")
     state["view"]["repoText"] = read(repo_field, "text", "") if repo_field else ""
     card = plugin.findChild(QObject, "milestoneCard")
@@ -234,6 +247,10 @@ def apply_step(step: str, plugin: QObject, store: QObject, harness=None):
         # Ctrl+V in a text field, as the user would press it: paste:<objectName>
         key, mods = Qt.Key.Key_V, Qt.KeyboardModifier.ControlModifier
         field = find(plugin, argument)
+        if not field.inherits("QQuickTextInput"):   # a NumberField: its inner input
+            field = next(o for o in field.findChildren(QObject) if o.inherits("QQuickTextInput"))
+        # Qt's own clipboard holds something else: if that shows up, Qt read the clipboard itself.
+        QGuiApplication.clipboard().setText("7")
         field.window().requestActivate()
         field.forceActiveFocus()
         for kind in (QKeyEvent.Type.KeyPress, QKeyEvent.Type.KeyRelease):

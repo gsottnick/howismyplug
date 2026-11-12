@@ -99,9 +99,10 @@ Nothing to install beyond Omarchy itself. This release is tested on Omarchy 4.0.
 
 The plugin uses what Omarchy ships:
 
-- Omarchy's shell (Quickshell) to run and to talk to GitHub and the marketplace
+- Omarchy's shell (Quickshell) to run
 - `secret-tool` (libsecret) and GNOME Keyring to keep your GitHub sign-in
-- `wl-copy` (wl-clipboard) to copy the sign-in code
+- `wl-copy` and `wl-paste` (wl-clipboard) to copy the sign-in code and paste into the dropdown
+- `curl` to talk to GitHub and the marketplace
 
 It talks to `api.github.com` and `github.com` (your traffic, sign-in) and `api.omarchyplugins.com`
 (public listing stats). Signing in uses the **HowIsMyPlug** GitHub app, which can only read traffic on the
