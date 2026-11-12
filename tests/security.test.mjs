@@ -48,6 +48,20 @@ test("the token only appears where SECURITY.md says", () => {
     assert.ok(!/(?<!\w)_token\b/.test(read(file)), `${file} touches the token`)
 })
 
+test("requests go through curl, with everything on stdin", () => {
+  const store = read("PlugStore.qml")
+  // No in-process HTTP: its reply size can't be capped before it is buffered.
+  for (const file of shipped) assert.ok(!/XMLHttpRequest|\bfetch\(/.test(read(file)), `${file} makes its own request`)
+  // curl's command line is constant: no user curlrc, config from stdin.
+  const curls = [...store.matchAll(/command:\s*(\[[^\n]*"curl"[^\n]*\])/g)]
+  assert.equal(curls.length, 1)
+  assert.match(curls[0][1], /"curl", "-q", "--silent", "--config", "-"\]$/)
+  // The config pins the protocol, the size cap and the deadline, and the token header is only ever a config line.
+  for (const line of ['"max-filesize = "', '"max-time = "', "'proto = \"='", "'write-out = \"%{stderr}%{http_code}\"'"])
+    assert.ok(store.includes(line), `curl config lacks ${line}`)
+  assert.match(store, /onStarted: \{\s*var slot = root\._slots\[index\]\s*slot\.began = true\s*write\(slot\.entry\.config\)\s*slot\.entry\.config = ""\s*stdinEnabled = false/)
+})
+
 test("secrets reach processes only on stdin", () => {
   const store = read("PlugStore.qml")
   for (const [, cmd] of store.matchAll(/command:\s*(\[[^\n]*\])/g))
