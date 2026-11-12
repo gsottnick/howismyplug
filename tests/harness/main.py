@@ -25,7 +25,7 @@ REPO = HERE.parent.parent
 sys.path.insert(0, str(HERE))
 
 from PySide6.QtCore import Q_ARG, QMetaObject, QObject, Qt, QTimer, QUrl, Slot  # noqa: E402
-from PySide6.QtGui import QBitmap, QColor, QDesktopServices, QGuiApplication, QImage, QPainter, QRegion  # noqa: E402
+from PySide6.QtGui import QBitmap, QColor, QKeyEvent, QDesktopServices, QGuiApplication, QImage, QPainter, QRegion  # noqa: E402
 from PySide6.QtQml import QJSValue, QQmlApplicationEngine, QQmlEngine, QQmlExpression  # noqa: E402
 from PySide6.QtQuick import QQuickItem, QQuickWindow  # noqa: E402
 
@@ -126,6 +126,8 @@ def snapshot(plugin: QObject, store: QObject) -> dict:
     state["panel"]["slotSize"] = read(button, "slotSize") if button else None
     confetti = plugin.findChild(QObject, "confetti")
     state["view"]["confetti"] = bool(confetti and confetti.property("running"))
+    repo_field = find_or_none(plugin, "repoField")
+    state["view"]["repoText"] = read(repo_field, "text", "") if repo_field else ""
     card = plugin.findChild(QObject, "milestoneCard")
     state["view"]["cardVisible"] = bool(card and card.property("visible"))
     keyboard = plugin.findChild(QObject, "keyboardPanel")
@@ -225,6 +227,13 @@ def apply_step(step: str, plugin: QObject, store: QObject, harness=None):
         evaluate(plugin, "Style.reduceMotion = true")
     elif name == "click":
         QMetaObject.invokeMethod(find(plugin, argument), "clicked")
+    elif name == "paste":
+        # Ctrl+V in a text field, as the user would press it: paste:<objectName>
+        field = find(plugin, argument)
+        field.window().requestActivate()
+        field.forceActiveFocus()
+        for kind in (QKeyEvent.Type.KeyPress, QKeyEvent.Type.KeyRelease):
+            QGuiApplication.sendEvent(field.window(), QKeyEvent(kind, Qt.Key.Key_V, Qt.KeyboardModifier.ControlModifier))
     elif name == "wait":
         pass
     else:

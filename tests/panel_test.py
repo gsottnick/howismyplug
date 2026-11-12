@@ -69,6 +69,7 @@ class Harness:
             HARNESS_SCREEN="1600x1200",
             HOWISMYPLUG_TEST_BASE=fake.base,
             FAKE_KEYRING=str(self.keyring),
+            FAKE_CLIPBOARD=str(self.workdir / "clipboard"),
             XDG_STATE_HOME=str(self.state_home),
             PATH=f"{FAKE_BIN}:{os.environ.get('PATH', '')}",
         )
@@ -339,6 +340,31 @@ class PanelTest(unittest.TestCase):
         repo = s["state"]["repos"][0]
         self.assertEqual(repo["clones"]["days"], {})
         self.assertEqual(repo["market"]["current"], {"views": 0, "copies": 0, "hearts": 0})
+
+    def test_paste_reads_a_bounded_clipboard(self):
+        h = self.harness()
+        (h.workdir / "clipboard").write_text("octo/plug")
+        s = h.run(["open", "paste:repoField"])
+        self.assertEqual(s["view"]["repoText"], "octo/plug")
+        (h.workdir / "clipboard").write_text("x" * 100_000)
+        s = h.run(["open", "paste:repoField"])
+        self.assertEqual(s["view"]["repoText"], "", "an oversized clipboard is never inserted")
+        self.assertEqual(s["view"]["repoError"], "That's too long to paste")
+
+    def test_an_oversized_reply_is_dropped(self):
+        self.fake.market["io.github.octo.plug"]["padding"] = "x" * 9_000_000
+        h = self.harness()
+        s = h.run(["track:octo/plug", "wait:2000"])
+        self.assertIsNone(s["state"]["repos"][0]["market"], "a reply past the cap is not parsed")
+        self.assertFalse(s["polling"])
+
+    def test_an_unreadable_history_is_retried_and_never_overwritten(self):
+        h = self.harness()
+        h.history_file.mkdir(parents=True)   # cat fails: not a missing file, not readable either
+        s = h.run(["track:octo/plug", "wait:500"])
+        self.assertFalse(s["stateLoaded"])
+        self.assertEqual(s["pollError"], "Couldn't read the saved history. Trying again…")
+        self.assertTrue(h.history_file.is_dir(), "nothing was written over it")
 
     def test_period_choice_is_saved_to_the_widget_settings(self):
         h = self.harness()
