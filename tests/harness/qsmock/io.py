@@ -99,6 +99,17 @@ SILENT_COMMANDS = {"pw-play"}
 PIPED = []
 
 
+def program(command):
+    """The program a command runs, looking through a `timeout [-k N] DURATION` prefix."""
+    i = 0
+    if command and os.path.basename(command[0]) == "timeout":
+        i = 1
+        while i < len(command) and command[i].startswith("-"):
+            i += 2 if command[i] in ("-k", "-s") else 1
+        i += 1   # the duration
+    return os.path.basename(command[i]) if i < len(command) else ""
+
+
 @QmlElement
 class Process(QObject):
     commandChanged = Signal()
@@ -206,13 +217,13 @@ class Process(QObject):
             return
         self._running = True
         self.runningChanged.emit()
-        if os.path.basename(self._command[0]) in PIPED_COMMANDS | SILENT_COMMANDS:
+        if program(self._command) in PIPED_COMMANDS | SILENT_COMMANDS:
             # Recorded, never run: tests must not raise real notifications or
             # write the developer's clipboard.
             self._piped = {"command": list(self._command), "stdin": ""}
             PIPED.append(self._piped)
             self.started.emit()
-            if os.path.basename(self._command[0]) in SILENT_COMMANDS:
+            if program(self._command) in SILENT_COMMANDS:
                 QTimer.singleShot(0, lambda: self._finalize(0, 0))
             return
         # Each run starts from an empty buffer, as the real collector does.

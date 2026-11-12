@@ -424,6 +424,7 @@ Singleton {
   }
 
   function useToken(token, method) {
+    root._lookupWanted = false
     root._token = token
     root.authError = ""
     var s = copyState(); s.authMethod = method; commit(s)
@@ -436,6 +437,8 @@ Singleton {
 
   function signOut() {
     cancelSignIn()
+    root._lookupWanted = false   // a pending keyring lookup must not sign back in
+    if (root.authError === root.keyringReadError) root.authError = ""
     root._token = ""
     root._keyPending = ""
     root._clearQueued = true
@@ -488,27 +491,56 @@ Singleton {
   }
 
   // ── keyring (secret-tool, from libsecret; GNOME Keyring ships with Omarchy) ──
-  // A keyring that is locked, missing or stuck leaves the user signed out
-  // (they can sign in again), never waiting forever.
+  // A keyring that is locked, missing or stuck never leaves the plugin
+  // waiting: the user can sign in at once, and the lookup is tried again every
+  // minute until it answers, unless they sign in or out first. "Not found"
+  // (exit 1, nothing on stderr) is an answer: signed out.
+  property bool _lookupWanted: false
+  property string _keyOut: ""
+  property bool _keyOutTooLong: false
+  readonly property string keyringReadError: "Couldn't read the keyring. Trying again in a minute."
+  function lookUpKey() {
+    if (!root._lookupWanted || keyLookup.running) return
+    root._keyOut = ""
+    root._keyOutTooLong = false
+    startHelper(keyLookup)
+  }
+
   Process {
     id: keyLookup
     objectName: "keyLookup"
     command: ["timeout", "-k", "2", "15", "secret-tool", "lookup", "service", root.keyService, "account", "github"]
-    stdout: StdioCollector { id: keyText; waitForEnd: true }
+    stdout: SplitParser {
+      splitMarker: ""
+      onRead: function(chunk) {
+        if (root._keyOutTooLong) return
+        root._keyOut += chunk
+        if (root._keyOut.length > 4096) { root._keyOutTooLong = true; root._keyOut = ""; keyLookup.running = false }
+      }
+    }
+    stderr: StdioCollector { id: keyErr; waitForEnd: true }
     onStarted: root.began(keyLookup)
     onExited: function(code) {
-      var t = code === 0 ? String(keyText.text || "").trim() : ""
-      if (/^[A-Za-z0-9_]{20,255}$/.test(t)) root._token = t
-      root.keyringLookedUp()
+      var t = code === 0 && !root._keyOutTooLong ? String(root._keyOut).trim() : ""
+      root._keyOut = ""
+      root.keyringLookedUp(t, code === 0 || (code === 1 && String(keyErr.text).trim() === ""))
     }
-    onRunningChanged: if (root.neverBegan(keyLookup)) root.keyringLookedUp()
+    onRunningChanged: if (root.neverBegan(keyLookup)) root.keyringLookedUp("", false)
   }
 
-  function keyringLookedUp() {
-    if (root.keyringChecked) return
-    root.keyringChecked = true
-    root.tick()
+  function keyringLookedUp(t, answered) {
+    var wanted = root._lookupWanted
+    root._lookupWanted = wanted && !answered
+    if (!wanted) t = ""   // signed in or out meanwhile: that wins
+    if (/^[A-Za-z0-9_]{20,255}$/.test(t)) root._token = t
+    if (root._lookupWanted) { root.authError = root.keyringReadError; keyRetry.restart() }
+    else if (root.authError === root.keyringReadError) root.authError = ""
+    if (!root.keyringChecked) { root.keyringChecked = true; root.tick() }
+    else if (root.signedIn) root.tick()
   }
+
+  // Lookup, and a sign-out that couldn't clear the keyring, are retried here.
+  Timer { id: keyRetry; interval: 60000; onTriggered: { root.lookUpKey(); root.keyringNext() } }
 
   Process {
     id: keyStore
@@ -537,13 +569,26 @@ Singleton {
     objectName: "keyClear"
     command: ["timeout", "-k", "2", "15", "secret-tool", "clear", "service", root.keyService, "account", "github"]
     onStarted: root.began(keyClear)
-    onExited: root.keyringNext()
-    onRunningChanged: if (root.neverBegan(keyClear)) root.keyringNext()
+    onExited: function(code) { root.keyCleared(code === 0) }
+    onRunningChanged: if (root.neverBegan(keyClear)) root.keyCleared(false)
+  }
+
+  readonly property string keyringClearError: "Couldn't remove the sign-in from the keyring. Trying again in a minute."
+  function keyCleared(ok) {
+    if (ok) { if (root.authError === root.keyringClearError) root.authError = "" }
+    else if (root._keyPending === "") {
+      // Still signed out: the keyring entry must go, so ask again.
+      root._clearQueued = true
+      root.authError = root.keyringClearError
+      keyRetry.restart()
+      return
+    }
+    root.keyringNext()
   }
 
   // ── bounded paste ───────────────────────────────────────────────────
   // The text fields paste through here instead of letting Qt read the whole
-  // clipboard: at most maxPasteChars of text, within 3 s, or nothing.
+  // clipboard: at most maxPasteChars of text, within 2 s (3.5 s at worst), or nothing.
   // done(text) with the text, or done(null, why) when there is nothing to paste.
   readonly property int maxPasteChars: 4096
   property var _pasteDone: null
@@ -555,10 +600,19 @@ Singleton {
     root._pasteText = ""
     root._pasteTooLong = false
     startHelper(pasteRead)
+    pasteDeadline.restart()
+  }
+
+  // `timeout` stops wl-paste after 2 s; this is the plugin's own deadline in case it doesn't.
+  Timer {
+    id: pasteDeadline
+    interval: 3500
+    onTriggered: { if (pasteRead.running) pasteRead.running = false; root.pasteFinished(false) }
   }
 
   function pasteFinished(ok) {
     var done = root._pasteDone, text = root._pasteText
+    pasteDeadline.stop()
     root._pasteDone = null
     root._pasteText = ""
     if (!done) return
@@ -590,7 +644,7 @@ Singleton {
   property string _clip: ""
   Process {
     id: clipboard
-    command: ["wl-copy"]
+    command: ["timeout", "-k", "1", "5", "wl-copy"]   // wl-copy hands the text to a background copy of itself and exits
     onStarted: {
       write(root._clip)
       root._clip = ""
@@ -657,7 +711,8 @@ Singleton {
     root.pollError = ""
     root.state = Model.cleanState(raw)
     root.stateLoaded = true
-    startHelper(keyLookup)
+    root._lookupWanted = true
+    lookUpKey()
     schedule()
   }
 
@@ -670,7 +725,14 @@ Singleton {
   }
 
   // A save that fails or can't start leaves the old file in place (the write
-  // goes to a temporary file first); the next change saves the whole state again.
+  // goes to a temporary file first). It is reported and tried again in 30 s.
+  readonly property string saveError: "Couldn't save the history. Trying again…"
+  function stateSaved(ok) {
+    if (ok) { if (root.pollError === root.saveError) root.pollError = "" }
+    else { root.pollError = root.saveError; saveRetry.restart(); return }   // no tight loop if sh can't start
+    if (root._saveQueued !== "") { stateWrite.stdinEnabled = true; startHelper(stateWrite) }
+  }
+  Timer { id: saveRetry; interval: 30000; onTriggered: root.saveState() }
   Process {
     id: stateWrite
     objectName: "stateWrite"
@@ -681,8 +743,8 @@ Singleton {
       stdinEnabled = false
       root.began(stateWrite)
     }
-    onExited: if (root._saveQueued !== "") { stdinEnabled = true; root.startHelper(stateWrite) }
-    onRunningChanged: if (root.neverBegan(stateWrite)) stdinEnabled = false
+    onExited: function(code) { root.stateSaved(code === 0) }
+    onRunningChanged: if (root.neverBegan(stateWrite)) { stdinEnabled = false; root.stateSaved(false) }
   }
 
   // Keeps "updated 3 h ago" honest while the bar sits there, and unsticks a

@@ -25,7 +25,7 @@ REPO = HERE.parent.parent
 sys.path.insert(0, str(HERE))
 
 from PySide6.QtCore import Q_ARG, QMetaObject, QObject, Qt, QTimer, QUrl, Slot  # noqa: E402
-from PySide6.QtGui import QBitmap, QColor, QKeyEvent, QDesktopServices, QGuiApplication, QImage, QPainter, QRegion  # noqa: E402
+from PySide6.QtGui import QBitmap, QColor, QKeyEvent, QMouseEvent, QDesktopServices, QGuiApplication, QImage, QPainter, QRegion  # noqa: E402
 from PySide6.QtQml import QJSValue, QQmlApplicationEngine, QQmlEngine, QQmlExpression  # noqa: E402
 from PySide6.QtQuick import QQuickItem, QQuickWindow  # noqa: E402
 
@@ -126,6 +126,9 @@ def snapshot(plugin: QObject, store: QObject) -> dict:
     state["panel"]["slotSize"] = read(button, "slotSize") if button else None
     confetti = plugin.findChild(QObject, "confetti")
     state["view"]["confetti"] = bool(confetti and confetti.property("running"))
+    # Any popup menu open anywhere (the text fields must never show Qt's Paste menu).
+    state["view"]["menusOpen"] = sum(1 for w in QGuiApplication.topLevelWindows() for o in w.findChildren(QObject)
+                                     if "Menu" in o.metaObject().className() and o.property("opened"))
     repo_field = find_or_none(plugin, "repoField")
     state["view"]["repoText"] = read(repo_field, "text", "") if repo_field else ""
     card = plugin.findChild(QObject, "milestoneCard")
@@ -229,11 +232,21 @@ def apply_step(step: str, plugin: QObject, store: QObject, harness=None):
         QMetaObject.invokeMethod(find(plugin, argument), "clicked")
     elif name == "paste":
         # Ctrl+V in a text field, as the user would press it: paste:<objectName>
+        key, mods = Qt.Key.Key_V, Qt.KeyboardModifier.ControlModifier
         field = find(plugin, argument)
         field.window().requestActivate()
         field.forceActiveFocus()
         for kind in (QKeyEvent.Type.KeyPress, QKeyEvent.Type.KeyRelease):
-            QGuiApplication.sendEvent(field.window(), QKeyEvent(kind, Qt.Key.Key_V, Qt.KeyboardModifier.ControlModifier))
+            QGuiApplication.sendEvent(field.window(), QKeyEvent(kind, key, mods))
+    elif name == "right-click":
+        # A right click on an item, through the window like a real one: right-click:<objectName>
+        item = find(plugin, argument)
+        item.window().requestActivate()
+        at = item.mapToScene(item.boundingRect().center())
+        for kind, buttons in ((QMouseEvent.Type.MouseButtonPress, Qt.MouseButton.RightButton),
+                              (QMouseEvent.Type.MouseButtonRelease, Qt.MouseButton.NoButton)):
+            QGuiApplication.sendEvent(item.window(), QMouseEvent(kind, at, item.window().mapToGlobal(at),
+                                                                 Qt.MouseButton.RightButton, buttons, Qt.KeyboardModifier.NoModifier))
     elif name == "wait":
         pass
     else:

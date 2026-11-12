@@ -127,21 +127,23 @@ Item {
   }
 
   // Paste goes through PlugStore.readClipboard (bounded size and time), never
-  // Qt's own clipboard read. The text lands only if the same field still has
-  // focus and nothing was typed or pasted meanwhile.
+  // Qt's own clipboard read. The text lands only if the same field kept focus
+  // the whole time (losing it bumps pasteSeq) and its text, cursor and
+  // selection are what they were when the paste was asked for.
   property int pasteSeq: 0
   function pasteKey(field, event, onError) {
-    if (event.matches(StandardKey.Paste)) {
+    if (event.matches(StandardKey.Paste) || event.key === Qt.Key_Paste) {
       event.accepted = true
-      var seq = ++root.pasteSeq, before = field.text
+      var seq = ++root.pasteSeq, before = field.text, cursor = field.cursorPosition
       var from = field.selectionStart, to = field.selectionEnd
       PlugStore.readClipboard(function(text, why) {
-        if (seq !== root.pasteSeq || !field.activeFocus || field.text !== before) return
+        if (seq !== root.pasteSeq || !field.activeFocus || field.text !== before || field.cursorPosition !== cursor
+            || field.selectionStart !== from || field.selectionEnd !== to) return
         if (text === null) { if (why) onError(why); return }
         if (to > from) field.remove(from, to)
         field.insert(from, text)
       })
-    } else if (event.key === Qt.Key_Menu) {
+    } else if (event.key === Qt.Key_Menu || (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))) {
       event.accepted = true   // no context menu: its Paste would read the clipboard unbounded
     }
   }
@@ -411,7 +413,7 @@ Item {
             foreground: root.fg
             accent: root.accent
             placeholderText: "e.g. yourname/my-omarchy-plugin"
-            onActiveFocusChanged: root.editorsFocused += activeFocus ? 1 : -1
+            onActiveFocusChanged: { root.editorsFocused += activeFocus ? 1 : -1; root.pasteSeq++ }
             onAccepted: root.addRepo()
             Keys.onPressed: function(event) { root.pasteKey(repoField, event, function(why) { root.repoError = why }) }
             // Middle-click and right-click would paste or open a Paste menu outside the bound.
@@ -1119,7 +1121,7 @@ Item {
             foreground: root.fg
             accent: root.accent
             placeholderText: "github_pat_…"
-            onActiveFocusChanged: root.editorsFocused += activeFocus ? 1 : -1
+            onActiveFocusChanged: { root.editorsFocused += activeFocus ? 1 : -1; root.pasteSeq++ }
             onAccepted: root.saveToken(tokenField)
             Keys.onPressed: function(event) { root.pasteKey(tokenField, event, function(why) { root.tokenError = why }) }
             MouseArea { anchors.fill: parent; acceptedButtons: Qt.MiddleButton | Qt.RightButton; onPressed: function(mouse) { tokenField.forceActiveFocus() } }
