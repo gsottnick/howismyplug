@@ -126,6 +126,26 @@ Item {
     if (!root.tokenError) root.tokenMode = false
   }
 
+  // Paste goes through PlugStore.readClipboard (bounded size and time), never
+  // Qt's own clipboard read. The text lands only if the same field still has
+  // focus and nothing was typed or pasted meanwhile.
+  property int pasteSeq: 0
+  function pasteKey(field, event, onError) {
+    if (event.matches(StandardKey.Paste)) {
+      event.accepted = true
+      var seq = ++root.pasteSeq, before = field.text
+      var from = field.selectionStart, to = field.selectionEnd
+      PlugStore.readClipboard(function(text, why) {
+        if (seq !== root.pasteSeq || !field.activeFocus || field.text !== before) return
+        if (text === null) { if (why) onError(why); return }
+        if (to > from) field.remove(from, to)
+        field.insert(from, text)
+      })
+    } else if (event.key === Qt.Key_Menu) {
+      event.accepted = true   // no context menu: its Paste would read the clipboard unbounded
+    }
+  }
+
   function setRepoMilestone(change) {
     var m = { on: repo.milestone.on, metric: repo.milestone.metric, step: repo.milestone.step }
     for (var k in change) m[k] = change[k]
@@ -393,6 +413,9 @@ Item {
             placeholderText: "e.g. yourname/my-omarchy-plugin"
             onActiveFocusChanged: root.editorsFocused += activeFocus ? 1 : -1
             onAccepted: root.addRepo()
+            Keys.onPressed: function(event) { root.pasteKey(repoField, event, function(why) { root.repoError = why }) }
+            // Middle-click and right-click would paste or open a Paste menu outside the bound.
+            MouseArea { anchors.fill: parent; acceptedButtons: Qt.MiddleButton | Qt.RightButton; onPressed: function(mouse) { repoField.forceActiveFocus() } }
           }
           Button {
             id: trackButton
@@ -1098,6 +1121,8 @@ Item {
             placeholderText: "github_pat_…"
             onActiveFocusChanged: root.editorsFocused += activeFocus ? 1 : -1
             onAccepted: root.saveToken(tokenField)
+            Keys.onPressed: function(event) { root.pasteKey(tokenField, event, function(why) { root.tokenError = why }) }
+            MouseArea { anchors.fill: parent; acceptedButtons: Qt.MiddleButton | Qt.RightButton; onPressed: function(mouse) { tokenField.forceActiveFocus() } }
           }
           Button {
             id: saveTokenButton

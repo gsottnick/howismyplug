@@ -64,7 +64,7 @@ test("nothing logs, escalates, or runs a shell on input", () => {
     assert.ok(!/execDetached/.test(text), `${file} starts detached processes`)
   }
   // The one shell command takes its directory as an argument, never spliced in.
-  const shells = [...read("PlugStore.qml").matchAll(/\["sh", "-c", '([^']*)', "sh", ([^\]]*)\]/g)]
+  const shells = [...read("PlugStore.qml").matchAll(/"sh", "-c", '([^']*)', "sh", ([^\]]*)\]/g)]
   assert.equal(shells.length, 1)
   assert.ok(!shells[0][1].includes("+"), "the shell script is a constant")
 })

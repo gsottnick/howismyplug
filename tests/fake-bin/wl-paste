@@ -1,0 +1,3 @@
+#!/bin/sh
+# Stand-in for wl-paste: prints the test's clipboard file, never the real clipboard.
+[ -f "${FAKE_CLIPBOARD:?FAKE_CLIPBOARD not set}" ] && cat "$FAKE_CLIPBOARD" || exit 1

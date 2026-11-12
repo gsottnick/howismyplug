@@ -135,23 +135,69 @@ Singleton {
   }
 
   // ── HTTP ────────────────────────────────────────────────────────────
-  // Every request answers exactly once: with GitHub's reply, or with status 0
-  // after 20 s. A reply that never comes (a stalled reused connection) must not
-  // stop a sign-in or a check without a word.
+  // Every request answers exactly once: with the server's reply, or with
+  // status 0 after 20 s, when the reply grows past its size cap, when the
+  // queue is full, or when it can't be sent. A reply that never comes (a
+  // stalled reused connection) must not stop a sign-in or a check without a word.
+  // At most maxInflight run at once; the rest wait their turn in _queue.
+  readonly property int maxInflight: 6
+  readonly property int maxQueued: 512          // 100 repos x 3 requests, with room
+  readonly property int maxReplyChars: 1048576  // GitHub replies here are a few KB
+  readonly property int maxMarketChars: 8388608 // all marketplace stats, ~400 KB in 2026
   property var _inflight: []
-  function request(method, url, headers, body, done) {
-    var x = new XMLHttpRequest()
-    var entry = { x: x, started: Date.now(), answered: false, done: done }
-    x.onreadystatechange = function() {
-      if (x.readyState !== XMLHttpRequest.DONE || entry.answered) return
-      entry.answered = true
-      root._inflight = root._inflight.filter(function(e) { return e !== entry })
-      done(x.status, x.responseText)
+  property var _queue: []
+  function request(method, url, headers, body, done, maxChars) {
+    var entry = { method: method, url: url, headers: headers, body: body || null, done: done,
+                  max: maxChars || root.maxReplyChars, x: null, started: 0, answered: false }
+    if (root._queue.length >= root.maxQueued) { done(0, ""); return }
+    root._queue = root._queue.concat([entry])
+    pumpRequests()
+  }
+
+  function pumpRequests() {
+    while (root._inflight.length < root.maxInflight && root._queue.length > 0) {
+      var entry = root._queue[0]
+      root._queue = root._queue.slice(1)
+      sendRequest(entry)
     }
+  }
+
+  function sendRequest(entry) {
+    var x = new XMLHttpRequest()
+    entry.x = x
+    entry.started = Date.now()
     root._inflight = root._inflight.concat([entry])
-    x.open(method, url)
-    for (var k in headers) x.setRequestHeader(k, headers[k])
-    x.send(body || null)
+    // LOADING fires for each chunk that arrives, so an oversized reply is
+    // dropped as soon as it passes the cap instead of after it is all buffered.
+    // shortcut: the cap is checked per network chunk, so one chunk can overshoot it; QML's XHR has no read limit.
+    x.onreadystatechange = function() {
+      if (entry.answered) return
+      if (x.readyState === XMLHttpRequest.HEADERS_RECEIVED && Number(x.getResponseHeader("Content-Length")) > entry.max) return answerRequest(entry, 0, "")
+      if (x.readyState === XMLHttpRequest.LOADING && x.responseText.length > entry.max) return answerRequest(entry, 0, "")
+      if (x.readyState !== XMLHttpRequest.DONE) return
+      var reply = x.responseText
+      if (reply.length > entry.max) answerRequest(entry, 0, "")
+      else answerRequest(entry, x.status, reply)
+    }
+    try {
+      x.open(entry.method, entry.url)
+      for (var k in entry.headers) x.setRequestHeader(k, entry.headers[k])
+      x.send(entry.body)
+    } catch (err) {
+      answerRequest(entry, 0, "")
+    }
+  }
+
+  function answerRequest(entry, status, body) {
+    if (entry.answered) return
+    entry.answered = true
+    root._inflight = root._inflight.filter(function(e) { return e !== entry })
+    // Abort on the next turn: aborting inside XHR's own LOADING callback frees
+    // the reply while Qt is still reading it (a crash). `answered` ignores the rest.
+    var x = entry.x
+    if (status === 0 && x) Qt.callLater(function() { try { x.abort() } catch (err) {} })
+    entry.done(status, body)
+    pumpRequests()
   }
 
   Timer {
@@ -160,13 +206,8 @@ Singleton {
     repeat: true
     onTriggered: {
       var now = Date.now()
-      root._inflight.forEach(function(e) {
-        if (e.answered || now - e.started < root.requestTimeoutMs) return
-        e.answered = true
-        try { e.x.abort() } catch (err) {}
-        e.done(0, "")
-      })
-      root._inflight = root._inflight.filter(function(e) { return !e.answered })
+      root._inflight.filter(function(e) { return now - e.started >= root.requestTimeoutMs })
+                    .forEach(function(e) { root.answerRequest(e, 0, "") })
     }
   }
   property int requestTimeoutMs: Number(Quickshell.env("HOWISMYPLUG_TEST_TIMEOUT_MS")) > 0 && root.testBase ? Number(Quickshell.env("HOWISMYPLUG_TEST_TIMEOUT_MS")) : 20000
@@ -277,7 +318,7 @@ Singleton {
         root.state = s
       }
       finish()
-    })
+    }, root.maxMarketChars)
   }
 
   property double _pollStarted: 0
@@ -410,12 +451,23 @@ Singleton {
     if (keyStore.running || keyClear.running) return
     if (root._clearQueued) {
       root._clearQueued = false
-      keyClear.running = true
+      startHelper(keyClear)
     } else if (root._keyPending !== "") {
       keyStore.stdinEnabled = true
-      keyStore.running = true
+      startHelper(keyStore)
     }
   }
+
+  // Every helper below is finite: `timeout` ends it, and `_began` tells a
+  // program that never started (Quickshell then reports no exit at all) from
+  // one that ran.
+  property var _began: ({})
+  function startHelper(proc) {
+    root._began[proc.objectName] = false
+    proc.running = true
+  }
+  function began(proc) { root._began[proc.objectName] = true }
+  function neverBegan(proc) { return !proc.running && root._began[proc.objectName] === false }
 
   function copy(value) {
     root._clip = String(value)
@@ -436,39 +488,103 @@ Singleton {
   }
 
   // ── keyring (secret-tool, from libsecret; GNOME Keyring ships with Omarchy) ──
+  // A keyring that is locked, missing or stuck leaves the user signed out
+  // (they can sign in again), never waiting forever.
   Process {
     id: keyLookup
-    command: ["secret-tool", "lookup", "service", root.keyService, "account", "github"]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var t = String(text || "").trim()
-        if (/^[A-Za-z0-9_]{20,255}$/.test(t)) root._token = t
-        root.keyringChecked = true
-        root.tick()
-      }
+    objectName: "keyLookup"
+    command: ["timeout", "-k", "2", "15", "secret-tool", "lookup", "service", root.keyService, "account", "github"]
+    stdout: StdioCollector { id: keyText; waitForEnd: true }
+    onStarted: root.began(keyLookup)
+    onExited: function(code) {
+      var t = code === 0 ? String(keyText.text || "").trim() : ""
+      if (/^[A-Za-z0-9_]{20,255}$/.test(t)) root._token = t
+      root.keyringLookedUp()
     }
-    onExited: function(code) { if (code !== 0) root.keyringChecked = true }
+    onRunningChanged: if (root.neverBegan(keyLookup)) root.keyringLookedUp()
+  }
+
+  function keyringLookedUp() {
+    if (root.keyringChecked) return
+    root.keyringChecked = true
+    root.tick()
   }
 
   Process {
     id: keyStore
-    command: ["secret-tool", "store", "--label=HowIsMyPlug? GitHub sign-in", "service", root.keyService, "account", "github"]
+    objectName: "keyStore"
+    command: ["timeout", "-k", "2", "15", "secret-tool", "store", "--label=HowIsMyPlug? GitHub sign-in", "service", root.keyService, "account", "github"]
     onStarted: {
       write(root._keyPending)
       root._keyPending = ""
       stdinEnabled = false
+      root.began(keyStore)
     }
     onExited: function(code) {
       if (code !== 0) root.authError = "Couldn't save the sign-in to the keyring. It works until you log out."
+      root.keyringNext()
+    }
+    onRunningChanged: if (root.neverBegan(keyStore)) {
+      root._keyPending = ""
+      stdinEnabled = false
+      root.authError = "Couldn't save the sign-in to the keyring. It works until you log out."
       root.keyringNext()
     }
   }
 
   Process {
     id: keyClear
-    command: ["secret-tool", "clear", "service", root.keyService, "account", "github"]
+    objectName: "keyClear"
+    command: ["timeout", "-k", "2", "15", "secret-tool", "clear", "service", root.keyService, "account", "github"]
+    onStarted: root.began(keyClear)
     onExited: root.keyringNext()
+    onRunningChanged: if (root.neverBegan(keyClear)) root.keyringNext()
+  }
+
+  // ── bounded paste ───────────────────────────────────────────────────
+  // The text fields paste through here instead of letting Qt read the whole
+  // clipboard: at most maxPasteChars of text, within 3 s, or nothing.
+  // done(text) with the text, or done(null, why) when there is nothing to paste.
+  readonly property int maxPasteChars: 4096
+  property var _pasteDone: null
+  property string _pasteText: ""
+  property bool _pasteTooLong: false
+  function readClipboard(done) {
+    if (pasteRead.running) { done(null, ""); return }
+    root._pasteDone = done
+    root._pasteText = ""
+    root._pasteTooLong = false
+    startHelper(pasteRead)
+  }
+
+  function pasteFinished(ok) {
+    var done = root._pasteDone, text = root._pasteText
+    root._pasteDone = null
+    root._pasteText = ""
+    if (!done) return
+    if (root._pasteTooLong) done(null, "That's too long to paste")
+    else done(ok ? text : null, "")
+  }
+
+  Process {
+    id: pasteRead
+    objectName: "pasteRead"
+    command: ["timeout", "-k", "1", "2", "wl-paste", "--no-newline", "--type", "text"]
+    stdout: SplitParser {
+      splitMarker: ""   // every chunk as it arrives, so the cap holds before it is all read
+      onRead: function(chunk) {
+        if (root._pasteTooLong) return
+        root._pasteText += chunk
+        if (root._pasteText.length > root.maxPasteChars) {
+          root._pasteTooLong = true
+          root._pasteText = ""
+          pasteRead.running = false
+        }
+      }
+    }
+    onStarted: root.began(pasteRead)
+    onExited: function(code) { root.pasteFinished(code === 0) }
+    onRunningChanged: if (root.neverBegan(pasteRead)) root.pasteFinished(false)
   }
 
   property string _clip: ""
@@ -483,24 +599,65 @@ Singleton {
   }
 
   // ── state file ──────────────────────────────────────────────────────
-  Component.onCompleted: stateRead.running = true
+  Component.onCompleted: readState()
+
+  // 100 repos with years of daily numbers stay far below this.
+  readonly property int maxStateChars: 67108864
+  property string _stateRaw: ""
+  property bool _stateTooBig: false
+  function readState() {
+    if (stateLoaded || stateRead.running) return
+    root._stateRaw = ""
+    root._stateTooBig = false
+    startHelper(stateRead)
+  }
+
+  // Until the file is read, nothing is saved, so a read that fails never
+  // overwrites the history: it is tried again every 30 s.
+  function stateReadFailed() {
+    root._stateRaw = ""
+    root.pollError = root._stateTooBig
+      ? "The history file is too large to read: " + root.stateDir + "/history.json. Move it away to start fresh."
+      : "Couldn't read the saved history. Trying again…"
+    if (!root._stateTooBig) stateRetry.restart()
+  }
+
+  Timer { id: stateRetry; interval: 30000; onTriggered: root.readState() }
 
   Process {
     id: stateRead
-    command: ["cat", root.stateDir + "/history.json"]
-    stdout: StdioCollector {
-      id: stateText
-      waitForEnd: true
+    objectName: "stateRead"
+    command: ["timeout", "-k", "2", "15", "cat", root.stateDir + "/history.json"]
+    environment: ({ LC_ALL: "C" })   // so the "No such file" below is in English
+    stdout: SplitParser {
+      splitMarker: ""
+      onRead: function(chunk) {
+        if (root._stateTooBig) return
+        root._stateRaw += chunk
+        if (root._stateRaw.length > root.maxStateChars) {
+          root._stateTooBig = true
+          root._stateRaw = ""
+          stateRead.running = false
+        }
+      }
     }
-    // A missing file is a first run.
-    onExited: function(code) { root.loadState(code === 0 ? stateText.text : "") }
+    stderr: StdioCollector { id: stateErr; waitForEnd: true }
+    onStarted: root.began(stateRead)
+    onExited: function(code) {
+      if (code === 0 && !root._stateTooBig) root.loadState(root._stateRaw)
+      else if (!root._stateTooBig && /No such file/.test(stateErr.text)) root.loadState("")   // a first run
+      else root.stateReadFailed()
+    }
+    onRunningChanged: if (root.neverBegan(stateRead)) root.stateReadFailed()
   }
 
   function loadState(raw) {
     if (stateLoaded) return
+    root._stateRaw = ""
+    root.pollError = ""
     root.state = Model.cleanState(raw)
     root.stateLoaded = true
-    keyLookup.running = true
+    startHelper(keyLookup)
     schedule()
   }
 
@@ -509,18 +666,23 @@ Singleton {
   function saveState() {
     if (!stateLoaded) return
     root._saveQueued = JSON.stringify(root.state)
-    if (!stateWrite.running) { stateWrite.stdinEnabled = true; stateWrite.running = true }
+    if (!stateWrite.running) { stateWrite.stdinEnabled = true; startHelper(stateWrite) }
   }
 
+  // A save that fails or can't start leaves the old file in place (the write
+  // goes to a temporary file first); the next change saves the whole state again.
   Process {
     id: stateWrite
-    command: ["sh", "-c", 'umask 077 && mkdir -p "$1" && cat > "$1/history.json.tmp" && mv -f "$1/history.json.tmp" "$1/history.json"', "sh", root.stateDir]
+    objectName: "stateWrite"
+    command: ["timeout", "-k", "2", "15", "sh", "-c", 'umask 077 && mkdir -p "$1" && cat > "$1/history.json.tmp" && mv -f "$1/history.json.tmp" "$1/history.json"', "sh", root.stateDir]
     onStarted: {
       write(root._saveQueued)
       root._saveQueued = ""
       stdinEnabled = false
+      root.began(stateWrite)
     }
-    onExited: if (root._saveQueued !== "") { stdinEnabled = true; running = true }
+    onExited: if (root._saveQueued !== "") { stdinEnabled = true; root.startHelper(stateWrite) }
+    onRunningChanged: if (root.neverBegan(stateWrite)) stdinEnabled = false
   }
 
   // Keeps "updated 3 h ago" honest while the bar sits there, and unsticks a

@@ -53,6 +53,20 @@ ignored unless it is exactly `http://127.0.0.1:<port>`.
 - The history file is written with `umask 077` (mode 600) through a temp file and a rename; its
   contents go in on stdin, never on a command line.
 
+## Limits
+
+- **Replies:** at most 6 requests run at once, 512 can wait, and each one ends after 20 s. A reply is
+  dropped once it grows past 1 MiB (GitHub) or 8 MiB (marketplace stats), checked as each network
+  chunk arrives, before it is parsed.
+- **Paste:** the repo and token fields never let Qt read the clipboard. Ctrl+V (and Shift+Insert)
+  reads at most 4096 characters of text through `wl-paste`, which is stopped after 2 s. The text is
+  inserted only if the same field still has focus and nothing changed meanwhile. Middle-click paste
+  and the right-click menu are off in those fields.
+- **Helpers:** every `secret-tool`, history read and history write runs under `timeout`. A helper
+  that fails to start counts as failed: no keyring means signed out, and a history file that can't
+  be read is retried every 30 s and never overwritten. A history file over 64 MiB is not loaded and
+  is never overwritten.
+
 ## Checks
 
 `tests/security.test.mjs` fails the build if a shipped file contacts another host, uses plain
