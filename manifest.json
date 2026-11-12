@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.gsottnick.howismyplug",
   "name": "HowIsMyPlug?",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "author": "Gavin Sottnick",
   "license": "MIT",
   "description": "For plugin authors: lifetime clones and repo views for your GitHub repos, plus your marketplace listing's views, copies and hearts. Free, local, with milestone celebrations.",

@@ -1,0 +1,11 @@
+# The panel-test harness only (never shipped). Exact versions with hashes:
+# pip install --require-hashes -r tests/requirements-harness.txt
+# Below 6.12: Qt 6.12's QtQuick exports its own `Color`, which shadows Omarchy's in the harness.
+PySide6==6.11.3 \
+    --hash=sha256:ef2bdb61b1ad7e5e8db8ca7fb1a60d8b7960dfd490c582d005d8903044ab44f1
+PySide6_Essentials==6.11.3 \
+    --hash=sha256:c6a5c3b58bf55aef6e09a7de690ff6133335014ab81a7f22f56363ea08e8f6a3
+PySide6_Addons==6.11.3 \
+    --hash=sha256:5cab663fbff1b7a1fa7e641754de3ca1ea410407fc70bd4e240144b42d09a69c
+shiboken6==6.11.3 \
+    --hash=sha256:e601c957011345c741b88f661a12486f478db881d6777bdf37e3dc7a8d3387c6

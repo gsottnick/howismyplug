@@ -237,7 +237,7 @@ class PanelTest(unittest.TestCase):
         during = h.after(1)
         self.assertEqual(during["userCode"], "ABCD-1234")
         self.assertIn("https://github.com/login/device", during["opened"])
-        copied = [p["stdin"] for p in during["piped"] if p["command"] == ["wl-copy"]]
+        copied = [p["stdin"] for p in during["piped"] if p["command"][-1:] == ["wl-copy"]]
         self.assertIn("ABCD-1234", copied)
         self.assertTrue(during["view"]["codeCopied"] is False, "only the button shows 'Copied'")
         self.assertTrue(s["signedIn"])
@@ -278,7 +278,7 @@ class PanelTest(unittest.TestCase):
         self.fake.pending_polls = 99
         h = self.harness()
         s = h.run(["sign-in", "wait:300", "click:overviewSignIn-copyCode"])
-        copied = [p["stdin"] for p in s["piped"] if p["command"] == ["wl-copy"]]
+        copied = [p["stdin"] for p in s["piped"] if p["command"][-1:] == ["wl-copy"]]
         self.assertEqual(copied, ["ABCD-1234", "ABCD-1234"], "copied on sign-in and again on click")
         self.assertTrue(s["view"]["codeCopied"])
 
@@ -351,6 +351,11 @@ class PanelTest(unittest.TestCase):
         self.assertEqual(s["view"]["repoText"], "", "an oversized clipboard is never inserted")
         self.assertEqual(s["view"]["repoError"], "That's too long to paste")
 
+    def test_right_click_opens_no_paste_menu(self):
+        h = self.harness()
+        s = h.run(["open", "right-click:repoField", "wait:300"])
+        self.assertEqual(s["view"]["menusOpen"], 0)
+
     def test_an_oversized_reply_is_dropped(self):
         self.fake.market["io.github.octo.plug"]["padding"] = "x" * 9_000_000
         h = self.harness()
@@ -365,6 +370,36 @@ class PanelTest(unittest.TestCase):
         self.assertFalse(s["stateLoaded"])
         self.assertEqual(s["pollError"], "Couldn't read the saved history. Trying again…")
         self.assertTrue(h.history_file.is_dir(), "nothing was written over it")
+
+    def test_a_keyring_that_cant_be_read_is_reported_and_sign_in_still_works(self):
+        h = self.harness()
+        h.sign_in_with_keyring()
+        (h.keyring / "fail-lookup").write_text("")
+        s = h.run(["wait:500"])
+        self.assertTrue(s["keyringChecked"], "the sign-in buttons are not held up")
+        self.assertFalse(s["signedIn"])
+        self.assertEqual(s["authError"], "Couldn't read the keyring. Trying again in a minute.")
+        s = h.run(["wait:500", "token:" + fake_github.PAT, "wait:1000"])
+        self.assertTrue(s["signedIn"])
+        self.assertEqual(s["authError"], "")
+
+    def test_a_sign_out_the_keyring_refuses_is_reported_not_silent(self):
+        h = self.harness()
+        h.sign_in_with_keyring()
+        (h.keyring / "fail-clear").write_text("")
+        s = h.run(["wait:500", "sign-out", "wait:500"])
+        self.assertFalse(s["signedIn"])
+        self.assertEqual(s["authError"], "Couldn't remove the sign-in from the keyring. Trying again in a minute.")
+
+    def test_a_failed_save_is_reported_and_keeps_the_old_file(self):
+        h = self.harness()
+        h.seed({"lastPoll": 1, "repos": []})
+        before = h.history_file.read_text()
+        (h.history_file.parent / "history.json.tmp").mkdir()   # the write fails, even as root
+        s = h.run(["track:octo/plug", "wait:500"])
+        self.assertEqual(s["pollError"], "Couldn't save the history. Trying again…")
+        self.assertEqual(h.history_file.read_text(), before)
+        self.assertEqual(s["state"]["repos"][0]["repo"], "octo/plug", "the change is kept to save later")
 
     def test_period_choice_is_saved_to_the_widget_settings(self):
         h = self.harness()

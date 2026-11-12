@@ -15,8 +15,8 @@ jobs:
     name: Node tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22
       - run: node --test 'tests/*.test.mjs'
@@ -26,13 +26,13 @@ jobs:
     runs-on: ubuntu-latest
     # A plain Ubuntu container runs as root, so Qt's runtime libraries install
     # without privilege escalation anywhere in this repo.
-    container: ubuntu:24.04
+    container: ubuntu:24.04@sha256:2198e4c65076e9cb0b3d695219df667c0e3b0072da64ca3c2648aca17dcecaf5
     env:
       # The Omarchy releases whose Commons/Ui the panel is tested against: the
       # current stable one and the next one (the plugin adapts to each). Pinned
-      # so a change in Omarchy can't fail unrelated PRs; move them along as
-      # Omarchy ships.
-      OMARCHY_REFS: v4.0.6 v4.5.0-rc3
+      # to the tags' commits, so a change in Omarchy (or a moved tag) can't fail
+      # or change unrelated PRs; move them along as Omarchy ships.
+      OMARCHY_REFS: v4.0.6=237f1b4071a0bff2296c6d740ba2b9fd695ebfa0 v4.5.0-rc3=8d19ad75ace59af8b6ded52f8b2bec1b15adda7c
       DEBIAN_FRONTEND: noninteractive
     steps:
       - name: Install git, Python, Qt's runtime libraries and D-Bus
@@ -42,25 +42,29 @@ jobs:
             libegl1 libgl1 libglib2.0-0 libxkbcommon0 libfontconfig1 libdbus-1-3 fonts-dejavu-core \
             dbus
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Fetch Omarchy's shell components
         run: |
-          for ref in $OMARCHY_REFS; do
-            git clone -q --depth 1 --branch "$ref" https://github.com/basecamp/omarchy.git "$RUNNER_TEMP/omarchy-$ref"
+          for pin in $OMARCHY_REFS; do
+            ref="${pin%%=*}" sha="${pin#*=}" dir="$RUNNER_TEMP/omarchy-${pin%%=*}"
+            git init -q "$dir"
+            git -C "$dir" fetch -q --depth 1 https://github.com/basecamp/omarchy.git "$sha"
+            git -C "$dir" checkout -q --detach FETCH_HEAD
+            [ "$(git -C "$dir" rev-parse HEAD)" = "$sha" ] || { echo "Omarchy $ref is not $sha"; exit 1; }
           done
 
-      # Below 6.12: Qt 6.12's QtQuick exports its own `Color`, which shadows
-      # Omarchy's in this harness (see AGENTS.md).
+      # Exact versions with hashes; see the file for why it stays below 6.12.
       - name: Install PySide6
         run: |
           python3 -m venv .venv-harness
-          .venv-harness/bin/pip install -q 'PySide6>=6.10,<6.12'
+          .venv-harness/bin/pip install -q --only-binary :all: --require-hashes -r tests/requirements-harness.txt
 
       - name: Run the panel suite on each Omarchy
         working-directory: tests
         run: |
-          for ref in $OMARCHY_REFS; do
+          for pin in $OMARCHY_REFS; do
+            ref="${pin%%=*}"
             echo "::group::Omarchy $ref"
             OMARCHY_SHELL="$RUNNER_TEMP/omarchy-$ref/shell" ../.venv-harness/bin/python -m unittest panel_test -v
             echo "::endgroup::"

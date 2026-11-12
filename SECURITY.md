@@ -58,14 +58,27 @@ ignored unless it is exactly `http://127.0.0.1:<port>`.
 - **Replies:** at most 6 requests run at once, 512 can wait, and each one ends after 20 s. A reply is
   dropped once it grows past 1 MiB (GitHub) or 8 MiB (marketplace stats), checked as each network
   chunk arrives, before it is parsed.
-- **Paste:** the repo and token fields never let Qt read the clipboard. Ctrl+V (and Shift+Insert)
-  reads at most 4096 characters of text through `wl-paste`, which is stopped after 2 s. The text is
-  inserted only if the same field still has focus and nothing changed meanwhile. Middle-click paste
-  and the right-click menu are off in those fields.
-- **Helpers:** every `secret-tool`, history read and history write runs under `timeout`. A helper
-  that fails to start counts as failed: no keyring means signed out, and a history file that can't
-  be read is retried every 30 s and never overwritten. A history file over 64 MiB is not loaded and
-  is never overwritten.
+- **Paste:** the repo and token fields never let Qt read the clipboard. Ctrl+V, Shift+Insert and
+  the Paste key read at most 4096 characters of text through `wl-paste`, stopped by `timeout` after
+  2 s and by the plugin itself after 3.5 s. The text is inserted only if the same field kept focus
+  the whole time and its text, cursor and selection are unchanged. Middle-click paste, the
+  right-click menu, the Menu key and Shift+F10 are off in those fields.
+- **Helpers:** every `secret-tool`, `wl-copy`, history read and history write runs under `timeout`,
+  and a helper that fails to start is detected (Quickshell reports no exit then). Their output is
+  capped too (4 KiB from the keyring, 64 MiB of history).
+  - Keyring can't be read: you can sign in at once; the lookup is retried every minute and the
+    dropdown says so.
+  - Sign-out the keyring refuses: reported, and retried every minute until the entry is gone.
+  - Keyring can't save a sign-in: reported; it works until you log out.
+  - History can't be read: retried every 30 s and never overwritten. Over 64 MiB: not loaded,
+    never overwritten.
+  - History can't be saved: reported, the old file stays, and the save is retried every 30 s.
+
+## Supporting files and CI
+
+Nothing outside the plugin's QML/JS files ships to users. CI pins every input: GitHub Actions by
+commit SHA, the test container by digest, the Omarchy shells it tests against by commit, and the
+test harness's PySide6 wheels by exact version and hash (`tests/requirements-harness.txt`).
 
 ## Checks
 

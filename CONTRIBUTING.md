@@ -6,7 +6,7 @@ Changes go through pull requests into `main`; CI (`Node tests`, `Panel tests`) m
 
 ```bash
 node --test 'tests/*.test.mjs'           # logic, the lifetime math, security rules
-python3 -m venv .venv-harness && .venv-harness/bin/pip install 'PySide6>=6.10,<6.12'
+python3 -m venv .venv-harness && .venv-harness/bin/pip install --only-binary :all: --require-hashes -r tests/requirements-harness.txt
 cd tests && ../.venv-harness/bin/python -m unittest panel_test -v   # the real panel, fake GitHub
 omarchy plugin validate .
 ```
